@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#04130f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23062a24'/%3E%3Cpath d='M17 46c0-17 12-27 31-27 0 18-11 28-29 28z' fill='%235ef0bd'/%3E%3Cpath d='M35 23l-8 12h6l-4 10 10-13h-6z' fill='%23062a24'/%3E%3C/svg%3E">
   <title>Ruleta Ambiental</title>
   <meta name="description" content="Concurso educativo multijugador de Gestión Ambiental y Logística Reversa.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -89,9 +94,9 @@
         <p class="muted">Escribe el código que muestra el anfitrión y el nombre de tu equipo.</p>
       </div>
       <label for="join-code">Código de sala</label>
-      <input id="join-code" class="input code-input" type="text" placeholder="ECO-7K4" maxlength="8" autocapitalize="characters" spellcheck="false" inputmode="text">
+      <input id="join-code" class="input code-input" type="text" placeholder="ECO-7K4" maxlength="8" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="next">
       <label for="join-name">Nombre de tu equipo</label>
-      <input id="join-name" class="input" type="text" placeholder="Ej: Green Force" maxlength="30" spellcheck="false">
+      <input id="join-name" class="input" type="text" placeholder="Ej: Green Force" maxlength="30" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
       <p id="join-error" class="form-error hidden" role="alert"></p>
       <button id="join-submit" type="submit" class="btn btn-primary btn-xl">ENTRAR A LA SALA</button>
     </form>
@@ -105,10 +110,14 @@
         <div class="brand-line"><svg><use href="#i-energy"/></svg>RULETA AMBIENTAL</div>
         <span class="eyebrow">CÓDIGO DE LA SALA</span>
         <div id="host-code" class="room-code">ECO-000</div>
-        <p class="muted">Comparte este código con los equipos. Cada equipo entra desde <b>un solo dispositivo</b>.</p>
+        <p class="muted">Comparte este código con los equipos. Cada equipo entra desde <b>un solo teléfono</b>.</p>
+        <div id="host-qr" class="qr hidden">
+          <div id="host-qr-img" class="qr-img" role="img" aria-label="Código QR para unirse a la sala"></div>
+          <span class="qr-caption">Escanea con la cámara del teléfono<br>para entrar con el código ya escrito</span>
+        </div>
         <ol class="steps">
-          <li><span>Los equipos abren la app y pulsan <b>Unirse a una sala</b>.</span></li>
-          <li><span>Escriben el código y el nombre de su equipo.</span></li>
+          <li><span>Escanean el QR (o abren la página y pulsan <b>Unirse a una sala</b>).</span></li>
+          <li><span>Escriben el nombre de su equipo.</span></li>
           <li><span>Cuando estén todos, pulsa <b>Iniciar partida</b>.</span></li>
         </ol>
       </div>
@@ -156,6 +165,7 @@
         <span id="g-round-label" class="round-label">RONDA</span>
         <b id="g-round" class="round-value">1 / 10</b>
         <span class="round-bar"><span id="g-progress"></span></span>
+        <span id="g-timer" class="g-timer" aria-hidden="true"><svg><use href="#i-clock"/></svg><b id="g-timer-num">20</b></span>
       </div>
       <div class="gh-right">
         <div id="g-right" class="g-right"></div>

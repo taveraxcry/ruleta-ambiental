@@ -7,6 +7,8 @@
   function start(canvas) {
     const ctx = canvas.getContext('2d');
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const touch = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    const frameMs = touch ? 42 : 33;   // 24 fps en teléfonos (batería), 30 fps en computador
     let W = 0, H = 0, dpr = 1;
     let loops = [], flows = [], leaves = [], dust = [], pulses = [];
     let last = 0, raf = 0, t = 0;
@@ -72,7 +74,7 @@
 
     function frame(now) {
       raf = requestAnimationFrame(frame);
-      if (now - last < 33) return;           // ~30 fps es suficiente para un fondo
+      if (now - last < frameMs) return;      // un fondo no necesita 60 fps
       const dt = Math.min(0.1, (now - last) / 1000 || 0.033);
       last = now; t += dt;
       ctx.clearRect(0, 0, W, H);

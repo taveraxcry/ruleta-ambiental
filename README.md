@@ -43,6 +43,13 @@ Mientras `supabase-config.js` esté vacío, la app arranca en **modo local** (va
 `js/config.js`: `TOTAL_ROUNDS` (rondas reales), `PREVIEW_ROUNDS` (rondas del Preview), `QUESTION_TIME` (segundos), categorías y tabla de puntos.
 La tabla de puntos y el orden de las categorías también existen en `supabase/schema.sql` (`_calc_score`, `_wheel_categories`); si cambias uno, cambia el otro.
 
+## En el teléfono
+
+- **QR en la sala del anfitrión:** al escanearlo, el teléfono abre la app con el código ya escrito; solo falta el nombre del equipo (enlace `?sala=ECO-XXX`).
+- **Pantalla encendida:** durante la partida la app pide al teléfono no apagar la pantalla (Wake Lock), porque al bloquearse se corta la conexión en vivo. Si se bloquea igual, al volver se reconecta solo.
+- **Diseño compacto:** en pantallas pequeñas (iPhone SE) la ruleta deja ver la categoría y las 4 opciones caben sin scroll. Si una pregunta larga obliga a bajar, el tiempo restante pasa al encabezado.
+- **Vibración** al responder y al salir la categoría (Android), botones de 50 px o más, sin recarga accidental al deslizar, y efectos más livianos en teléfonos.
+
 ## Sonido
 
 Ticks de la ruleta, selección y confirmación se sintetizan con Web Audio (sin archivos). Nada suena al cargar: el audio se habilita con el primer clic o toque (en el anfitrión, con **Girar ruleta**). Hay un botón de silencio en el encabezado.

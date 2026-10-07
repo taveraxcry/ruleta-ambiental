@@ -25,9 +25,13 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   async function newPage(kind) {
     const ctx = await browser.newContext(kind === 'host'
       ? { viewport: { width: 1280, height: 800 } }
-      : { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+      : kind === 'small'   // teléfono pequeño (iPhone SE)
+        ? { viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+        : { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
     contexts.push(ctx);
-    await ctx.route('https://cdn.jsdelivr.net/**', (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: SHIM }));
+    // supabase-js se sustituye por el simulador; la librería del QR se descarga de verdad
+    await ctx.route('https://cdn.jsdelivr.net/**', (r) => (/qrcode-generator/.test(r.request().url())
+      ? r.continue() : r.fulfill({ status: 200, contentType: 'application/javascript', body: SHIM })));
     await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
     const page = await ctx.newPage();
     page.setDefaultTimeout(45000);
@@ -47,7 +51,7 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   const roomRow = async (code) => (await bridge.db.admin.query('select * from public.rooms where code=$1', [code])).rows[0];
 
   const host = await newPage('host');
-  const teams = [await newPage('team'), await newPage('team'), await newPage('team')];
+  const teams = [await newPage('team'), await newPage('team'), await newPage('small')];
   const [A, B, C] = teams;
   const names = ['Eco Team', 'Los Verdes', 'Guardianes'];
 
@@ -60,12 +64,24 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   const code = await text(host, '#host-code');
   check(/^ECO-[2-9A-HJKMNP-Z]{3}$/.test(code), 'código de sala generado: ' + code);
 
-  for (let i = 0; i < 3; i++) {
+  await host.waitForSelector('#host-qr:not(.hidden) .qr-img svg', { timeout: 15000 });
+  check(true, 'la sala del anfitrión muestra un código QR para entrar');
+
+  // Eco Team entra por el enlace del QR: el código ya viene escrito, solo pone el nombre
+  await A.goto(bridge.url + '/?sala=' + code);
+  await visible(A, '#screen-join');
+  check(await A.inputValue('#join-code') === code && await A.evaluate(() => document.activeElement.id) === 'join-name',
+    'el enlace del QR abre "Unirse" con el código escrito y el cursor en el nombre');
+  await A.fill('#join-name', names[0]);
+  await A.locator('#join-submit').tap();
+  await visible(A, '#screen-team-lobby');
+  check(await A.evaluate(() => location.search) === '', 'tras entrar, el enlace se limpia (recargar no vuelve al formulario)');
+  for (let i = 1; i < 3; i++) {
     const p = teams[i];
-    await p.click('#btn-join');
+    await p.locator('#btn-join').tap();
     await p.fill('#join-code', code.toLowerCase());
     await p.fill('#join-name', names[i]);
-    await p.click('#join-submit');
+    await p.locator('#join-submit').tap();
     await visible(p, '#screen-team-lobby');
   }
   await host.waitForFunction(() => document.querySelectorAll('#host-teams .team-name').length === 3);
@@ -147,6 +163,19 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
       check(await B.locator('#answer-count').count() === 0 && !/pts|puntos|respondi/i.test(await text(B, '.answer-status')), 'un equipo no ve quién respondió ni puntos durante la pregunta');
       await host.waitForFunction((n) => /Respuestas recibidas: \d \/ 3/.test(document.querySelector('#answer-count').textContent), n);
       check(true, 'el anfitrión ve el conteo de respuestas: ' + (await text(host, '#answer-count')));
+    }
+    if (plan.checkLocks) {   // teléfono pequeño sin responder: al bajar, el tiempo pasa al encabezado
+      const scrollable = await C.evaluate(() => document.documentElement.scrollHeight > innerHeight + 40);
+      if (scrollable) {
+        await C.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        await C.waitForSelector('#g-timer', { state: 'visible', timeout: 3000 }).catch(() => {});
+        check(await C.locator('#g-timer').isVisible() && /d+ s/.test(await text(C, '#g-timer')), 'al hacer scroll en el teléfono, el tiempo sigue visible arriba: ' + (await text(C, '#g-timer').catch(() => '')));
+        await C.evaluate(() => window.scrollTo(0, 0));
+      } else {
+        check(true, 'en el teléfono pequeño la pregunta cabe entera sin scroll');
+      }
+      const last = await C.locator('button.option').last().boundingBox();
+      check(last && last.y + last.height <= 667, 'en un iPhone SE se ven todas las opciones sin scroll');
     }
     if (plan.reloadB) {
       const before = (await bridge.db.admin.query('select id from public.teams where name=$1', ['Los Verdes'])).rows[0].id;

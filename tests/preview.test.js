@@ -173,14 +173,18 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
   check(rooms === 0, 'no se creó ninguna sala real en la base (' + rooms + ')');
 
   console.log('\nPantalla táctil (teléfono en Preview)');
-  const phone = await newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const phone = await newPage({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await phone.tap('#btn-preview');
   await phone.waitForSelector('[data-action="spin"]');
-  await phone.evaluate(() => { window.Ruleta.DEBUG_FORCE_QUESTION = 18; });   // EPI, V/F
+  await phone.evaluate(() => { window.Ruleta.DEBUG_FORCE_QUESTION = 20; });   // la pregunta más larga
   await phone.tap('[data-action="spin"]');
   await phone.waitForSelector('[data-action="show"]', { timeout: 12000 });
   await phone.tap('[data-action="show"]');
   await phone.waitForSelector('button.option.is-live');
+  check(!(await phone.locator('#g-timer').isVisible()), 'con el reloj de la tarjeta a la vista, el encabezado muestra la ronda');
+  await phone.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await phone.waitForSelector('#g-timer', { state: 'visible', timeout: 3000 }).catch(() => {});
+  check(await phone.locator('#g-timer').isVisible(), 'al bajar en el teléfono, el tiempo restante queda fijo arriba: ' + (await phone.locator('#g-timer').innerText()));
   await phone.tap('button.option[data-index="0"]');
   await phone.waitForSelector('.answer-status.ok');
   check(await phone.locator('button.option.is-selected[data-index="0"]').count() === 1, 'tocar una opción la registra (táctil)');

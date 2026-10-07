@@ -35,6 +35,45 @@
   function nowMs() { return (app.role === 'team' ? app.client : app.host).hostNow(); }
   function myAnswer() { return canAnswer() && app.client && app.client.myAnswer ? app.client.myAnswer.index : null; }
 
+  /* ---------- Teléfono ---------- */
+  function vibrate(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* no soportado */ } }
+
+  /* Pantalla siempre encendida durante la partida: si el teléfono se bloquea, se corta la conexión en vivo. */
+  let wakeLock = null;
+  function keepAwake() {
+    if (!('wakeLock' in navigator) || wakeLock || document.hidden) return;
+    navigator.wakeLock.request('screen').then(function (l) {
+      wakeLock = l;
+      l.addEventListener('release', function () { wakeLock = null; });
+    }).catch(function () { /* sin permiso o no soportado */ });
+  }
+
+  function loadScript(src, globalName) {
+    if (window[globalName]) return Promise.resolve();
+    return new Promise(function (resolve, reject) {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = function () { window[globalName] ? resolve() : reject(new Error('No se pudo cargar ' + src)); };
+      s.onerror = function () { reject(new Error('No se pudo cargar ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  /* Enlace directo a la sala (el QR lo usa): abre la app con el código ya escrito. */
+  function joinLink(code) { return location.origin + location.pathname + '?sala=' + encodeURIComponent(code); }
+  let qrFor = null;
+  function renderQr(code) {
+    if (qrFor === code || !/^https?:/.test(location.protocol)) return;
+    qrFor = code;
+    loadScript('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js', 'qrcode').then(function () {
+      const qr = window.qrcode(0, 'M');
+      qr.addData(joinLink(code));
+      qr.make();
+      $('host-qr-img').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+      $('host-qr').classList.remove('hidden');
+    }).catch(function () { /* sin QR: el código sigue visible */ });
+  }
+
   /* ---------- Navegación ---------- */
   function show(id) {
     document.querySelectorAll('.screen').forEach(function (s) { s.classList.toggle('hidden', s.id !== id); });
@@ -66,7 +105,7 @@
       s.onload = function () { R.QUESTIONS ? resolve() : reject(new Error('Banco de preguntas vacío')); };
       s.onerror = function () { reject(new Error('No se pudo cargar el banco de preguntas')); };
       document.head.appendChild(s);
-    });
+    });   // (no usa loadScript: R.QUESTIONS vive dentro de window.Ruleta)
   }
 
   /* ---------- Enrutador por fase ---------- */
@@ -102,6 +141,7 @@
 
   function renderHostLobby(s) {
     $('host-code').textContent = s.roomCode;
+    renderQr(s.roomCode);
     $('host-count').textContent = s.teams.length;
     $('host-teams').innerHTML = teamsListHtml(s, false);
     $('btn-start').disabled = s.teams.length < 1;
@@ -174,6 +214,7 @@
     }
     if (!landed) {
       reveal.classList.add('hidden');
+      $('stage-wheel').classList.remove('has-reveal');
       app.revealKey = '';
       return;
     }
@@ -186,7 +227,12 @@
         '<span class="cat-name">' + esc(cat.name) + '</span>' +
         '<span class="cat-topic">' + esc(cat.topic) + '</span>';
       reveal.classList.remove('hidden');
-      if (window.innerWidth < 1100) setTimeout(function () { reveal.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, 120);
+      $('stage-wheel').classList.add('has-reveal');
+      if (canAnswer()) vibrate(30);
+      // En pantallas bajas, asegura que la categoría quede a la vista
+      setTimeout(function () {
+        if (reveal.getBoundingClientRect().bottom > window.innerHeight) reveal.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 120);
     }
     reveal.classList.remove('hidden');
   }
@@ -246,7 +292,7 @@
               '<div class="t-num"><span id="timer-num" aria-live="off">' + CFG.QUESTION_TIME + '</span><span class="t-unit">SEG</span></div></div>' +
           '</div>' +
           (q.context ? '<p class="q-context">' + esc(q.context) + '</p>' : '') +
-          '<h2 class="q-text">' + esc(q.question) + '</h2>' +
+          '<h2 class="q-text' + (q.question.length > 160 ? ' long' : '') + '">' + esc(q.question) + '</h2>' +
           '<div class="options ' + gridCls + '" role="group" aria-label="Opciones de respuesta">' + options + '</div>' + status +
           '<div class="q-progress" id="q-progress"></div>' +
         '</div>';
@@ -410,7 +456,8 @@
     const s = app.state;
     const num = $('timer-num');
     const ring = $('timer-ring');
-    if (!s || !num || !ring || (s.phase !== P.QUESTION_ACTIVE && s.phase !== P.ANSWER_LOCKED)) return;
+    const inQuestion = !!s && (s.phase === P.QUESTION_ACTIVE || s.phase === P.ANSWER_LOCKED) && !!num && !!ring;
+    if (!inQuestion) { document.body.classList.remove('timer-off'); return; }
     let remaining = 0;
     if (s.phase === P.QUESTION_ACTIVE && s.questionDeadline) remaining = Math.max(0, (s.questionDeadline - nowMs()) / 1000);
     const total = s.questionStartedAt && s.questionDeadline ? (s.questionDeadline - s.questionStartedAt) / 1000 : CFG.QUESTION_TIME;
@@ -428,6 +475,14 @@
     const timer = $('timer');
     timer.classList.toggle('warn', remaining <= 10 && remaining > 5);
     timer.classList.toggle('danger', remaining <= 5 && remaining > 0);
+    // Si el teléfono hizo scroll y el reloj de la tarjeta no se ve, se muestra en el encabezado
+    const off = s.phase === P.QUESTION_ACTIVE && timer.getBoundingClientRect().bottom < $('screen-game').querySelector('.game-header').getBoundingClientRect().bottom;
+    document.body.classList.toggle('timer-off', off);
+    if (off) {
+      $('g-timer-num').textContent = shown + ' s';
+      $('g-timer').classList.toggle('warn', remaining <= 10 && remaining > 5);
+      $('g-timer').classList.toggle('danger', remaining <= 5);
+    }
     if (s.phase === P.QUESTION_ACTIVE && remaining <= 0) {   // al llegar a 0 la pregunta se bloquea sin esperar al servidor
       document.querySelectorAll('#stage-question .option.is-live').forEach(function (b) { b.disabled = true; b.classList.remove('is-live'); b.classList.add('is-dimmed'); });
     }
@@ -468,6 +523,7 @@
     }
     app.host.subscribe(onState);
     if (!app.sb) app.host.publish();
+    keepAwake();
   }
 
   async function resumeHost() {
@@ -505,6 +561,7 @@
     host.subscribe(onState);
     host.addDemoTeams();
     host.startGame();
+    keepAwake();
   }
 
   function normalizeCode(v) {
@@ -528,6 +585,8 @@
     client.subscribe(onState);
     client.startHeartbeat();
     session.save({ room: code, teamId: client.teamId, name: client.name });
+    if (location.search) history.replaceState(null, '', location.pathname);   // quita ?sala= de la URL
+    keepAwake();
     if (!app.state) {
       show('screen-team-lobby');
       $('tl-code').textContent = code;
@@ -572,6 +631,9 @@
     $('btn-join').addEventListener('click', function () { showJoinError(''); show('screen-join'); $('join-code').focus(); });
     $('btn-join-back').addEventListener('click', function () { show('screen-home'); });
     $('btn-sound').addEventListener('click', function () { R.Sound.setEnabled(!R.Sound.isEnabled()); updateSoundButton(); });
+    $('join-code').addEventListener('keydown', function (e) {   // "Siguiente" en el teclado del teléfono: pasa al nombre
+      if (e.key === 'Enter') { e.preventDefault(); $('join-name').focus(); }
+    });
 
     $('join-form').addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -626,6 +688,7 @@
       R.Sound.unlock();
       app.client.submitAnswer(parseInt(b.dataset.index, 10));
       R.Sound.confirm();
+      vibrate(18);
     });
   }
 
@@ -664,13 +727,23 @@
     app.sb = R.sbEnabled();
     setupHome();
 
+    // Al volver a la app (pantalla desbloqueada, pestaña activa) se pide de nuevo mantenerla encendida
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && app.role) keepAwake(); });
+
     // Recuperación de sesión tras recargar la página (anfitrión o equipo)
     (async function () {
       if (app.sb && await resumeHost()) return;
       const saved = session.load();
-      if (saved && saved.room && saved.name) {
+      const linkCode = new URLSearchParams(location.search).get('sala');
+      if (saved && saved.room && saved.name && (!linkCode || normalizeCode(linkCode) === saved.room)) {
         const ok = await joinRoom(saved.room, saved.name, saved.teamId, true);
-        if (!ok) session.clear();
+        if (ok) return;
+        session.clear();
+      }
+      if (linkCode) {   // llegó por el QR / enlace: código ya escrito, solo falta el nombre
+        show('screen-join');
+        $('join-code').value = normalizeCode(linkCode);
+        $('join-name').focus();
       }
     })();
   }
