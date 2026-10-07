@@ -1,0 +1,14 @@
+{
+  "name": "ruleta-ambiental-tests",
+  "private": true,
+  "description": "Pruebas de la lógica SQL y del flujo multijugador completo",
+  "scripts": {
+    "test:sql": "node sql.test.js",
+    "test:e2e": "node e2e.test.js"
+  },
+  "devDependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
+    "pg": "^8.13.0",
+    "playwright-core": "^1.49.0"
+  }
+}

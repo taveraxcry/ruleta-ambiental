@@ -255,3 +255,6 @@ label { font-size: .82rem; letter-spacing: .1em; color: var(--muted); font-weigh
   *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
   .wheel-rotor { transition-duration: 4s !important; } /* el giro sigue siendo visible */
 }
+
+.mode-badge { margin: -12px auto 22px; max-width: 440px; padding: 8px 12px; border-radius: 10px; font-size: .8rem; color: var(--warn); background: rgba(251, 191, 36, .1); border: 1px solid rgba(251, 191, 36, .35); }
+.conn-banner { position: fixed; left: 0; right: 0; top: 0; z-index: 60; text-align: center; padding: 8px; font-weight: 700; background: #92400e; color: #fff; }

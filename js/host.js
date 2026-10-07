@@ -47,6 +47,8 @@
 
     subscribe(fn) { this.listeners.push(fn); }
 
+    hostNow() { return Date.now(); }
+
     publish() {
       const pub = R.toPublicState(this.state, Date.now());
       this.listeners.forEach(function (fn) { fn(pub); });

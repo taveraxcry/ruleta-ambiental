@@ -17,7 +17,8 @@
   const catById = function (id) { return R.CATEGORIES.find(function (c) { return c.id === id; }); };
 
   const transport = new R.LocalTransport(CFG.CHANNEL_NAME);
-  const app = { role: null, host: null, client: null, state: null, wheel: null, questionKey: '' };
+  const app = { role: null, host: null, client: null, state: null, wheel: null, questionKey: '', sb: false };
+  const SB_SESSION_KEY = 'ruleta-sb-team';
 
   /* ---------- Navegación ---------- */
   function show(id) {
@@ -25,12 +26,28 @@
   }
 
   function myTeamId() { return app.role === 'team' ? app.client.teamId : null; }
-  function nowMs() { return app.role === 'team' ? app.client.hostNow() : Date.now(); }
+  function nowMs() { return (app.role === 'team' ? app.client : app.host).hostNow(); }
 
   function storage(fn) { try { return fn(); } catch (e) { return null; } }
 
+  /* Sesión del equipo: en Supabase se guarda en localStorage (sobrevive al cierre del navegador del teléfono). */
+  const session = {
+    save: function (obj) {
+      obj.ts = Date.now();
+      storage(function () { (app.sb ? localStorage : sessionStorage).setItem(app.sb ? SB_SESSION_KEY : SESSION_KEY, JSON.stringify(obj)); });
+    },
+    load: function () {
+      const v = storage(function () { return JSON.parse((app.sb ? localStorage : sessionStorage).getItem(app.sb ? SB_SESSION_KEY : SESSION_KEY)); });
+      return v && Date.now() - (v.ts || 0) < 12 * 3600 * 1000 ? v : null;
+    },
+    clear: function () {
+      storage(function () { localStorage.removeItem(SB_SESSION_KEY); sessionStorage.removeItem(SESSION_KEY); });
+    }
+  };
+
   /* ---------- Enrutador por fase ---------- */
   function onState(s) {
+    if (!s) return;
     app.state = s;
     if (s.phase === P.LOBBY) {
       if (app.role === 'host') { show('screen-host-lobby'); renderHostLobby(s); }
@@ -290,18 +307,58 @@
     num.textContent = Math.ceil(remaining);
     const ring = $('timer-ring');
     ring.style.strokeDasharray = RING_LEN;
-    ring.style.strokeDashoffset = RING_LEN * (1 - remaining / CFG.QUESTION_TIME);
+    const total = s.questionStartedAt && s.questionDeadline ? (s.questionDeadline - s.questionStartedAt) / 1000 : CFG.QUESTION_TIME;
+    ring.style.strokeDashoffset = RING_LEN * (1 - remaining / total);
+    if (s.phase === P.QUESTION_ACTIVE && remaining <= 0) {   // al llegar a 0 la pregunta se bloquea sin esperar al servidor
+      document.querySelectorAll('#stage-question .option').forEach(function (b) { b.disabled = true; });
+    }
     const timer = $('timer');
     timer.classList.toggle('warn', remaining <= 10 && remaining > 5);
     timer.classList.toggle('danger', remaining <= 5);
   }
 
   /* ---------- Eventos ---------- */
-  function createRoom() {
+  function wireBackend(b) {
+    b.onNotice = showToast;
+    b.onStatus = function (st) { $('conn-banner').classList.toggle('hidden', st === 'online'); };
+    b.onClosed = function () {
+      session.clear();
+      storage(function () { localStorage.removeItem('ruleta-sb-host-room'); });
+      alert('La sala fue cerrada.');
+      location.reload();
+    };
+  }
+
+  async function createRoom() {
     app.role = 'host';
+    if (app.sb) {
+      const btn = $('btn-create');
+      btn.disabled = true;
+      app.host = new R.SbHost(CFG.TOTAL_ROUNDS);
+      wireBackend(app.host);
+      try {
+        await app.host.create();
+      } catch (e) {
+        app.role = null; app.host = null;
+        showToast(e.message || 'No se pudo crear la sala.');
+        btn.disabled = false;
+        return;
+      }
+      app.host.subscribe(onState);
+      return;
+    }
     app.host = new R.HostGame(transport, CFG.TOTAL_ROUNDS);
     app.host.subscribe(onState);
     app.host.publish();
+  }
+
+  async function resumeHost() {
+    const host = new R.SbHost(CFG.TOTAL_ROUNDS);
+    wireBackend(host);
+    try {
+      if (await host.resume()) { app.role = 'host'; app.host = host; host.subscribe(onState); return true; }
+    } catch (e) { /* sin conexión: se queda en el inicio */ }
+    return false;
   }
 
   function normalizeCode(v) {
@@ -315,18 +372,21 @@
   }
 
   async function joinRoom(code, name, teamId, silent) {
-    const client = new R.ClientGame(transport, code, teamId, name);
+    const client = app.sb ? new R.SbClient(code, name) : new R.ClientGame(transport, code, teamId, name);
     client.onNotice = function (msg) { showToast(msg); };
+    if (app.sb) wireBackend(client);
     const res = await client.join();
     if (!res.ok) { if (!silent) showJoinError(res.error); return false; }
     app.role = 'team';
     app.client = client;
     client.subscribe(onState);
     client.startHeartbeat();
-    storage(function () { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ room: code, teamId: teamId, name: name })); });
-    show('screen-team-lobby');
-    $('tl-code').textContent = code;
-    $('tl-team').textContent = name;
+    session.save({ room: code, teamId: client.teamId, name: client.name });
+    if (!app.state) {
+      show('screen-team-lobby');
+      $('tl-code').textContent = code;
+      $('tl-team').textContent = client.name;
+    }
     return true;
   }
 
@@ -369,11 +429,11 @@
         const st = app.state;
         const inGame = st && st.phase !== P.LOBBY && st.phase !== P.GAME_OVER;
         if (inGame && !confirm(app.role === 'host' ? '¿Salir? Se perderá la partida en curso.' : '¿Salir de la partida? Tu equipo quedará fuera.')) return;
-        if (app.role === 'team') {
-          transport.send({ type: 'LEAVE', room: app.client.room, teamId: app.client.teamId });
-          storage(function () { sessionStorage.removeItem(SESSION_KEY); });
-        }
-        location.reload();
+        const done = function () { session.clear(); location.reload(); };
+        if (app.sb && app.role === 'host') return app.host.close().then(done, done);
+        if (app.sb && app.role === 'team') return app.client.leave().then(done, done);
+        if (app.role === 'team') transport.send({ type: 'LEAVE', room: app.client.room, teamId: app.client.teamId });
+        done();
       });
     });
 
@@ -390,11 +450,14 @@
         case 'close': h.closeAnswers(); break;
         case 'board': h.showLeaderboard(); break;
         case 'next': h.nextRound(); break;
-        case 'restart': location.reload(); break;
-        case 'leave':
-          storage(function () { sessionStorage.removeItem(SESSION_KEY); });
-          location.reload();
+        case 'restart':
+        case 'leave': {
+          const done = function () { session.clear(); location.reload(); };
+          if (app.sb && app.role === 'host') app.host.close().then(done, done);
+          else if (app.sb && app.role === 'team') app.client.leave().then(done, done);
+          else done();
           break;
+        }
       }
     });
 
@@ -418,19 +481,41 @@
     }
   }
 
+  /* Indicadores de modo y restricción de anfitrión a computador. */
+  function setupHome() {
+    const mode = $('mode-badge');
+    if (!app.sb) {
+      mode.classList.remove('hidden');
+      mode.textContent = R.SUPABASE && R.SUPABASE.url
+        ? '⚠ No se pudo cargar Supabase. Modo local de prueba.'
+        : 'Modo local de prueba (sin Supabase): solo funciona entre pestañas de este navegador.';
+    } else {
+      $('btn-demo').classList.add('hidden');
+    }
+    if (window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+      $('btn-create').disabled = true;
+      $('btn-create').querySelector('small').textContent = 'Disponible solo en computador';
+    }
+  }
+
   function init() {
     buildBackground();
     app.wheel = new R.Wheel($('wheel-canvas'), $('wheel-rotor'));
     bindEvents();
     setInterval(tick, 100);
 
-    // Reconexión automática de un equipo tras recargar la página
-    const saved = storage(function () { return JSON.parse(sessionStorage.getItem(SESSION_KEY)); });
-    if (saved && saved.room && saved.teamId && saved.name) {
-      joinRoom(saved.room, saved.name, saved.teamId, true).then(function (ok) {
-        if (!ok) storage(function () { sessionStorage.removeItem(SESSION_KEY); });
-      });
-    }
+    app.sb = R.sbEnabled();
+    setupHome();
+
+    // Recuperación de sesión tras recargar la página (anfitrión o equipo)
+    (async function () {
+      if (app.sb && await resumeHost()) return;
+      const saved = session.load();
+      if (saved && saved.room && saved.name) {
+        const ok = await joinRoom(saved.room, saved.name, saved.teamId, true);
+        if (!ok) session.clear();
+      }
+    })();
   }
 
   document.addEventListener('DOMContentLoaded', init);
