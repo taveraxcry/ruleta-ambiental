@@ -54,6 +54,7 @@ create table if not exists public.room_private (
   question_id         int,
   used_question_ids   int[] not null default '{}'
 );
+alter table public.room_private add column if not exists wheel_qids int[] not null default '{}';
 
 create table if not exists public.teams (
   id           uuid primary key default gen_random_uuid(),
@@ -67,6 +68,8 @@ create table if not exists public.teams (
   unique (room_code, user_id),   -- un dispositivo = un equipo
   unique (room_code, name_key)   -- sin nombres duplicados en la sala
 );
+alter table public.teams add column if not exists correct_count int not null default 0;
+alter table public.rooms add column if not exists wheel jsonb not null default '[]'::jsonb;   -- segmentos que quedan
 
 create table if not exists public.answers (
   room_code    text not null,
@@ -161,6 +164,7 @@ declare
   v_alpha constant text := '23456789ABCDEFGHJKMNPQRSTUVWXYZ';  -- sin 0/O/1/I
   v_code text;
   v_try int := 0;
+  v_w record;
 begin
   if auth.uid() is null then raise exception 'Sesión requerida'; end if;
   if p_total_rounds not between 1 and 50 then raise exception 'Número de rondas inválido'; end if;
@@ -177,7 +181,9 @@ begin
     begin
       insert into public.rooms (code, host_id, total_rounds, question_seconds)
         values (v_code, auth.uid(), p_total_rounds, p_question_seconds);
-      insert into public.room_private (room_code) values (v_code);
+      select * into v_w from public._build_wheel();
+      insert into public.room_private (room_code, wheel_qids) values (v_code, v_w.o_qids);
+      update public.rooms set wheel = v_w.o_wheel where code = v_code;
       return v_code;
     exception when unique_violation then
       if v_try >= 30 then raise exception 'No se pudo generar un código único'; end if;
@@ -263,71 +269,87 @@ begin
   update public.rooms set phase = 'WAITING' where code = r.code;
 end $$;
 
--- Segmentos de la ruleta en orden horario. DEBE coincidir con R.CATEGORIES de js/config.js.
+-- Orden de las categorías. DEBE coincidir con R.CATEGORIES de js/config.js.
 create or replace function public._wheel_categories()
 returns text[] language sql immutable as $$
   select array['KYOTO','ROTTERDAM','ESCAZU','BASILEA','CITES','RAMSAR','PARIS',
                'MONTREAL','GINEBRA','GOTHENBURG','BRUNDTLAND','EPI','INTEGRADORA'];
 $$;
 
--- Elige categoría y pregunta SOLO entre categorías de la ruleta que aún tienen preguntas sin usar
--- en la partida. Una categoría sin preguntas cargadas (p. ej. ROTTERDAM, MONTREAL) nunca sale.
-create or replace function public._pick_question(p_used int[], out o_category text, out o_question_id int, out o_reset boolean)
-language plpgsql volatile as $$
-declare v_avail text[];
+-- Ruleta inicial: UN segmento por pregunta + 3 BONUS. Mismo algoritmo que R.buildWheel (js/config.js):
+-- primera pregunta de cada categoría, luego la segunda…; los BONUS repartidos a lo largo.
+-- o_wheel es público ([{c: categoría}]); o_qids (qué pregunta hay en cada segmento) es privado.
+create or replace function public._build_wheel(out o_wheel jsonb, out o_qids int[])
+language plpgsql stable as $$
+declare
+  v_bonus constant int := 3;
+  v_c text; v_k int := 0; v_added boolean; v_q int; v_total int; v_pos int;
 begin
-  o_reset := false;
-  select array_agg(distinct q.category) into v_avail from public.questions q
-    where q.category = any (public._wheel_categories()) and q.id <> all (coalesce(p_used, '{}'));
-  if v_avail is null then   -- banco agotado: se empieza de nuevo
-    o_reset := true;
-    select array_agg(distinct q.category) into v_avail from public.questions q
-      where q.category = any (public._wheel_categories());
-  end if;
-  if v_avail is null then raise exception 'No hay preguntas cargadas'; end if;
-  o_category := v_avail[1 + floor(random() * array_length(v_avail, 1))::int];
-  select q.id into o_question_id from public.questions q
-    where q.category = o_category and (o_reset or q.id <> all (coalesce(p_used, '{}')))
-    order by random() limit 1;
+  o_wheel := '[]'::jsonb;
+  o_qids := '{}';
+  loop
+    v_added := false;
+    foreach v_c in array public._wheel_categories() loop
+      select q.id into v_q from public.questions q where q.category = v_c order by q.id offset v_k limit 1;
+      if found then
+        o_wheel := o_wheel || jsonb_build_array(jsonb_build_object('c', v_c));
+        o_qids := o_qids || v_q;
+        v_added := true;
+      end if;
+    end loop;
+    exit when not v_added;
+    v_k := v_k + 1;
+  end loop;
+  v_total := jsonb_array_length(o_wheel) + v_bonus;
+  for b in 0 .. v_bonus - 1 loop
+    v_pos := floor((b + 0.5) * v_total / v_bonus)::int;
+    o_wheel := (select coalesce(jsonb_agg(e order by i), '[]'::jsonb) from (
+                  select e, (case when i - 1 < v_pos then i - 1 else i end) as i
+                  from jsonb_array_elements(o_wheel) with ordinality as x(e, i)
+                  union all select jsonb_build_object('c', 'BONUS'), v_pos) y);
+    o_qids := o_qids[1:v_pos] || 0 || o_qids[v_pos + 1:];
+  end loop;
 end $$;
 
--- La categoría y la pregunta se deciden AQUÍ, una sola vez, para todos los dispositivos.
+-- El segmento (y con él la categoría y la pregunta) se decide AQUÍ, una sola vez, para todos los dispositivos.
 create or replace function public.spin(p_code text)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   r public.rooms;
-  v_cats text[] := public._wheel_categories();
-  v_n int := array_length(v_cats, 1);
-  v_pick record;
+  v_w record;
+  v_n int;
   v_idx int;
+  v_cat text;
+  v_qid int;
   v_seg numeric;
   v_jitter numeric;
   v_landing numeric;
   v_rotation numeric;
-  v_used int[];
 begin
   r := public._host_room(p_code);
   perform public._require_phase(r, 'WAITING');
+  if jsonb_array_length(r.wheel) = 0 then   -- ruleta agotada: se vuelve a armar
+    select * into v_w from public._build_wheel();
+    update public.rooms set wheel = v_w.o_wheel where code = r.code;
+    update public.room_private set wheel_qids = v_w.o_qids where room_code = r.code;
+    r.wheel := v_w.o_wheel;
+  end if;
 
-  select used_question_ids into v_used from public.room_private where room_code = r.code for update;
-  select * into v_pick from public._pick_question(v_used);
-  if v_pick.o_reset then v_used := '{}'; end if;
+  v_n := jsonb_array_length(r.wheel);
+  v_idx := floor(random() * v_n)::int;
+  v_cat := r.wheel -> v_idx ->> 'c';
+  select wheel_qids[v_idx + 1] into v_qid from public.room_private where room_code = r.code for update;
 
-  v_idx := array_position(v_cats, v_pick.o_category) - 1;
   v_seg := 360.0 / v_n;
   v_jitter := (random() - 0.5) * v_seg * 0.7;   -- aterriza dentro del segmento, no siempre al centro
   v_landing := mod(mod(360 - (v_idx * v_seg + v_seg / 2 + v_jitter), 360) + 360, 360);
   v_rotation := floor(r.wheel_rotation / 360) * 360 + (5 + floor(random() * 3)) * 360 + v_landing;
 
-  update public.room_private
-     set pending_category = v_pick.o_category, question_id = v_pick.o_question_id,
-         used_question_ids = array_append(v_used, v_pick.o_question_id)
-   where room_code = r.code;
-
+  update public.room_private set pending_category = v_cat, question_id = nullif(v_qid, 0) where room_code = r.code;
   update public.rooms set
     phase = 'SPINNING',
     spin = jsonb_build_object('id', (extract(epoch from clock_timestamp()) * 1000)::bigint,
-                              'categoryIndex', v_idx, 'rotation', v_rotation, 'durationMs', 5200),
+                              'categoryIndex', v_idx, 'rotation', v_rotation, 'durationMs', 7000),
     spin_started_at = clock_timestamp(),
     wheel_rotation = v_rotation,
     current_category = null
@@ -353,9 +375,9 @@ declare r public.rooms; q public.questions; v_start timestamptz := clock_timesta
 begin
   r := public._host_room(p_code);
   perform public._require_phase(r, 'CATEGORY_SELECTED');
+  if r.current_category = 'BONUS' then raise exception 'Salió BONUS: no hay pregunta en esta ronda'; end if;
   select qq.* into q from public.questions qq
     where qq.id = (select question_id from public.room_private where room_code = r.code);
-  update public.teams set round_points = 0 where room_code = r.code;
   update public.rooms set
     phase = 'QUESTION_ACTIVE',
     question = jsonb_build_object('id', q.id, 'type', q.type, 'question', q.question,
@@ -376,62 +398,23 @@ begin
   update public.rooms set phase = 'ANSWER_LOCKED' where code = r.code;
 end $$;
 
--- Calcula puntos UNA vez (la transición de fase lo garantiza) y publica los resultados.
-create or replace function public.show_results(p_code text)
+-- Quita de la ruleta el segmento usado y pasa a la siguiente ronda, o termina la partida.
+-- Interna: la llaman finish_round y apply_bonus con la sala ya bloqueada.
+create or replace function public._advance(p_code text)
 returns void language plpgsql security definer set search_path = public as $$
-declare r public.rooms; q public.questions; v_rows jsonb;
+declare r public.rooms; v_idx int; v_q int[];
 begin
-  r := public._host_room(p_code);
-  perform public._require_phase(r, 'ANSWER_LOCKED');
-  select qq.* into q from public.questions qq
-    where qq.id = (select question_id from public.room_private where room_code = r.code);
-
-  with calc as (
-    select t.id, t.name, t.created_at, a.option_index, a.response_ms,
-           coalesce(a.is_correct, false) as ok,
-           public._calc_score(a.response_ms, coalesce(a.is_correct, false)) as pts
-    from public.teams t
-    left join public.answers a
-      on a.team_id = t.id and a.room_code = t.room_code and a.round = r.current_round
-    where t.room_code = r.code
-  ), upd as (
-    update public.teams t set score = t.score + c.pts, round_points = c.pts
-    from calc c where t.id = c.id returning t.id
-  )
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'teamId', c.id, 'name', c.name, 'answerIndex', c.option_index,
-           'responseTime', case when c.response_ms is null then null else round(c.response_ms / 1000.0, 2) end,
-           'correct', c.ok, 'points', c.pts) order by c.pts desc, c.created_at), '[]'::jsonb)
-    into v_rows from calc c;
-
-  update public.rooms set
-    phase = 'RESULTS',
-    results = jsonb_build_object('round', r.current_round, 'correctAnswer', q.correct_answer,
-                                 'explanation', q.explanation, 'rows', v_rows)
-  where code = r.code;
-end $$;
-
-create or replace function public.show_leaderboard(p_code text)
-returns void language plpgsql security definer set search_path = public as $$
-declare r public.rooms;
-begin
-  r := public._host_room(p_code);
-  perform public._require_phase(r, 'RESULTS');
-  update public.rooms set phase = 'LEADERBOARD' where code = r.code;
-end $$;
-
--- Avanza de ronda o, tras la última, finaliza la partida.
-create or replace function public.next_round(p_code text)
-returns void language plpgsql security definer set search_path = public as $$
-declare r public.rooms;
-begin
-  r := public._host_room(p_code);
-  perform public._require_phase(r, 'LEADERBOARD');
+  select * into r from public.rooms where code = p_code;
+  v_idx := (r.spin->>'categoryIndex')::int;
+  if v_idx is not null then
+    select wheel_qids into v_q from public.room_private where room_code = r.code;
+    update public.room_private set wheel_qids = v_q[1:v_idx] || v_q[v_idx + 2:], pending_category = null, question_id = null
+      where room_code = r.code;
+    update public.rooms set wheel = wheel - v_idx where code = r.code;
+  end if;
   if r.current_round >= r.total_rounds then
     update public.rooms set phase = 'GAME_OVER' where code = r.code;
   else
-    update public.teams set round_points = 0 where room_code = r.code;
-    update public.room_private set pending_category = null, question_id = null where room_code = r.code;
     update public.rooms set
       phase = 'WAITING', current_round = r.current_round + 1,
       spin = null, spin_started_at = null, current_category = null, question = null,
@@ -439,6 +422,45 @@ begin
     where code = r.code;
   end if;
 end $$;
+
+-- Cierra la ronda: calcula los puntos UNA vez (la fase lo garantiza) y vuelve a la ruleta.
+-- Los puntos se guardan en segundo plano; la interfaz solo los muestra al final de la partida.
+create or replace function public.finish_round(p_code text)
+returns void language plpgsql security definer set search_path = public as $$
+declare r public.rooms;
+begin
+  r := public._host_room(p_code);
+  perform public._require_phase(r, 'ANSWER_LOCKED');
+  with calc as (
+    select t.id, coalesce(a.is_correct, false) as ok,
+           public._calc_score(a.response_ms, coalesce(a.is_correct, false)) as pts
+    from public.teams t
+    left join public.answers a
+      on a.team_id = t.id and a.room_code = t.room_code and a.round = r.current_round
+    where t.room_code = r.code
+  )
+  update public.teams t set score = t.score + c.pts, correct_count = t.correct_count + (case when c.ok then 1 else 0 end)
+  from calc c where t.id = c.id;
+  perform public._advance(r.code);
+end $$;
+
+-- BONUS: se salta la pregunta y todos los equipos suman 5 puntos.
+create or replace function public.apply_bonus(p_code text)
+returns void language plpgsql security definer set search_path = public as $$
+declare r public.rooms;
+begin
+  r := public._host_room(p_code);
+  perform public._require_phase(r, 'CATEGORY_SELECTED');
+  if r.current_category is distinct from 'BONUS' then raise exception 'Esta ronda no es BONUS'; end if;
+  update public.teams set score = score + 5 where room_code = r.code;
+  perform public._advance(r.code);
+end $$;
+
+-- Funciones de versiones anteriores (resultados y marcador entre rondas)
+drop function if exists public.show_results(text);
+drop function if exists public.show_leaderboard(text);
+drop function if exists public.next_round(text);
+drop function if exists public._pick_question(int[]);
 
 -- ---------- RPC: respuesta de un equipo ----------
 
@@ -490,8 +512,8 @@ begin
     where n.nspname = 'public'
       and p.proname in ('is_room_member','server_time','create_room','join_room','leave_room','close_room',
                         'start_game','spin','reveal_category','show_question','close_answers',
-                        'show_results','show_leaderboard','next_round','submit_answer',
-                        '_calc_score','_host_room','_require_phase','_wheel_categories','_pick_question')
+                        'finish_round','apply_bonus','submit_answer',
+                        '_calc_score','_host_room','_require_phase','_wheel_categories','_build_wheel','_advance')
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
     if left(f.proname, 1) <> '_' then

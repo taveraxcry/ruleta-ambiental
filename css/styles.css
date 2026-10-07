@@ -30,16 +30,23 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
-html { -webkit-text-size-adjust: 100%; background: var(--bg-0); }
-body {
-  font-family: var(--font);
-  color: var(--text);
+html {
+  -webkit-text-size-adjust: 100%;
   background: radial-gradient(1100px 700px at 15% -10%, #0c3b35 0%, transparent 60%),
               radial-gradient(900px 600px at 105% 110%, #0a2b44 0%, transparent 60%),
               linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  background-color: var(--bg-1);
   background-attachment: fixed;
+  overflow-x: hidden;
+}
+body {
+  font-family: var(--font);
+  color: var(--text);
+  background: transparent;
   line-height: 1.4;
   overflow-x: hidden;
+  width: 100%;
+  position: relative;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -50,8 +57,9 @@ svg { display: block; }
 b, strong { font-weight: 700; }
 
 /* ---------- Fondo animado ---------- */
-.bg-canvas { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
-.bg-glow { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; filter: blur(70px); opacity: .55; }
+/* 100lvh: cubre la pantalla completa también cuando el navegador del teléfono esconde sus barras */
+.bg-canvas { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; z-index: 0; pointer-events: none; display: block; }
+.bg-glow { position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; height: 100lvh; z-index: 0; pointer-events: none; overflow: hidden; filter: blur(70px); opacity: .55; }
 .bg-glow span { position: absolute; border-radius: 50%; animation: drift 26s ease-in-out infinite alternate; }
 .bg-glow span:nth-child(1) { width: 46vmax; height: 46vmax; left: -12vmax; top: -14vmax; background: radial-gradient(circle, rgba(32, 201, 151, .35), transparent 65%); }
 .bg-glow span:nth-child(2) { width: 40vmax; height: 40vmax; right: -14vmax; bottom: -16vmax; background: radial-gradient(circle, rgba(56, 160, 230, .3), transparent 65%); animation-duration: 32s; animation-delay: -8s; }
@@ -260,6 +268,19 @@ label { font-size: .76rem; letter-spacing: .14em; color: var(--muted); font-weig
   box-shadow: 0 30px 70px -20px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .06), 0 0 50px -10px rgba(47, 212, 192, .35);
 }
 .wheel-rotor canvas { width: 100%; height: 100%; display: block; border-radius: 50%; }
+.wheel-rim {   /* reflejos metálicos fijos sobre el aro (la luz no gira con la ruleta) */
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 210deg, rgba(255,255,255,0) 0deg, rgba(255,255,255,.38) 28deg, rgba(255,255,255,0) 64deg,
+              rgba(255,255,255,0) 170deg, rgba(160,255,230,.22) 200deg, rgba(255,255,255,0) 236deg, rgba(255,255,255,0) 360deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 90%, #000 90.6%, #000 99.2%, transparent 99.6%);
+  mask: radial-gradient(closest-side, transparent 90%, #000 90.6%, #000 99.2%, transparent 99.6%);
+}
+.wheel-rotor.refresh { animation: wheelRefresh .6s var(--ease); }
+@keyframes wheelRefresh { 0% { filter: brightness(1.35) saturate(1.2); transform-origin: center; } }
+.wheel-wrap.is-bonus .wheel-highlight path { fill: rgba(255, 220, 120, .3); stroke: #ffe7a3; filter: drop-shadow(0 0 3px rgba(255, 210, 100, .95)); }
+.wheel-wrap.is-bonus .wheel-aura { background: radial-gradient(circle, rgba(255, 200, 80, .3), rgba(255, 200, 80, 0) 65%); }
+.category-reveal.bonus { --cat: #d9a21b; background: linear-gradient(150deg, rgba(217, 162, 27, .38), rgba(40, 26, 4, .7)); border-color: #f2cf6b; }
+.category-reveal.bonus .cat-name { color: #ffe7a3; }
 .wheel-gloss {
   position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
   background: radial-gradient(120% 80% at 30% 8%, rgba(255, 255, 255, .2), rgba(255, 255, 255, 0) 45%),
@@ -280,8 +301,8 @@ label { font-size: .76rem; letter-spacing: .14em; color: var(--muted); font-weig
 .wheel-wrap.spinning .hub svg { animation: hubGlow 1s ease-in-out infinite; }
 @keyframes hubGlow { 50% { filter: drop-shadow(0 0 14px rgba(94, 240, 189, .9)); } }
 .wheel-pointer {
-  position: absolute; left: 50%; top: -5.5%; width: 9.5%; min-width: 34px; margin-left: calc(max(9.5%, 34px) / -2);
-  aspect-ratio: 60 / 84; z-index: 3; transform-origin: 50% 28.6%;
+  position: absolute; left: 50%; top: -7%; width: 8.4%; min-width: 30px; margin-left: calc(max(8.4%, 30px) / -2);
+  aspect-ratio: 60 / 132; z-index: 3; transform-origin: 50% 18.2%;
   filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .55)) drop-shadow(0 0 10px rgba(94, 240, 189, .35));
 }
 .wheel-pointer svg { width: 100%; height: 100%; }
@@ -581,6 +602,7 @@ body.timer-off .g-timer { display: inline-flex; animation: reveal .3s var(--ease
 
 /* Dispositivos táctiles: efectos más livianos para que vaya fluido en teléfonos de gama media */
 @media (hover: none) and (pointer: coarse) {
+  #btn-create { display: none; }   /* crear sala: solo en computador */
   .bg-glow { filter: none; opacity: .8; }
   .bg-glow span { animation: none; }
   .glass { backdrop-filter: blur(8px) saturate(120%); -webkit-backdrop-filter: blur(8px) saturate(120%); }
@@ -592,3 +614,4 @@ body.timer-off .g-timer { display: inline-flex; animation: reveal .3s var(--ease
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .bg-glow span { animation: none; }
 }
+.category-reveal.bonus .cat-name { font-size: clamp(1.8rem, 5vw, 2.6rem); white-space: nowrap; }

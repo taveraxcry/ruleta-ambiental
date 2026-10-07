@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#04130f">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -64,17 +64,13 @@
       <div class="home-actions">
         <button id="btn-create" class="cta cta-primary" type="button">
           <span class="cta-icon"><svg><use href="#i-plus"/></svg></span>
-          <span class="cta-text"><b>CREAR SALA</b><small>Anfitrión · desde el computador</small></span>
+          <span class="cta-text"><b>CREAR SALA</b><small>Anfitrión · solo desde el computador</small></span>
         </button>
         <button id="btn-join" class="cta cta-glass" type="button">
           <span class="cta-icon"><svg><use href="#i-enter"/></svg></span>
           <span class="cta-text"><b>UNIRSE A UNA SALA</b><small>Equipos · teléfono o computador</small></span>
         </button>
-        <button id="btn-preview" class="cta cta-preview" type="button">
-          <span class="cta-icon"><svg><use href="#i-eye"/></svg></span>
-          <span class="cta-text"><b>PREVIEW / DEMO</b><small>Recorre el juego con datos simulados</small></span>
-          <span class="cta-tag">SIN SALA REAL</span>
-        </button>
+        <!-- PREVIEW / DEMO oculto: se abre con ?demo=1 -->
       </div>
       <ul class="home-facts" aria-label="Características">
         <li><svg><use href="#i-clock"/></svg>20 s por pregunta</li>
@@ -178,22 +174,29 @@
         <div id="wheel-wrap" class="wheel-wrap">
           <div class="wheel-aura" aria-hidden="true"></div>
           <div id="wheel-rotor" class="wheel-rotor"><canvas id="wheel-canvas" role="img" aria-label="Ruleta de categorías"></canvas></div>
+          <div class="wheel-rim" aria-hidden="true"></div>
           <div class="wheel-gloss" aria-hidden="true"></div>
           <svg class="wheel-highlight" viewBox="0 0 100 100" aria-hidden="true"><path id="wheel-highlight-path"/></svg>
           <div class="hub" aria-hidden="true"><svg><use href="#i-energy"/></svg></div>
           <div id="wheel-pointer" class="wheel-pointer" aria-hidden="true">
-            <svg viewBox="0 0 60 84">
+            <svg viewBox="0 0 60 132">
               <defs>
                 <linearGradient id="ptr-body" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0" stop-color="#d9fff1"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#9fe9d2"/>
+                  <stop offset="0" stop-color="#9fb8b2"/><stop offset=".35" stop-color="#f4fffb"/><stop offset=".55" stop-color="#ffffff"/><stop offset="1" stop-color="#7f9a94"/>
                 </linearGradient>
-                <radialGradient id="ptr-cap" cx=".35" cy=".3" r=".8">
-                  <stop offset="0" stop-color="#5ff2c4"/><stop offset=".6" stop-color="#14a88a"/><stop offset="1" stop-color="#0b5f52"/>
+                <radialGradient id="ptr-cap" cx=".35" cy=".3" r=".85">
+                  <stop offset="0" stop-color="#8af7d2"/><stop offset=".55" stop-color="#14a88a"/><stop offset="1" stop-color="#064a40"/>
+                </radialGradient>
+                <radialGradient id="ptr-rivet" cx=".35" cy=".35" r=".8">
+                  <stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#c9d8d4"/><stop offset="1" stop-color="#5b726d"/>
                 </radialGradient>
               </defs>
-              <path d="M30 80 L14 30 A16 16 0 1 1 46 30 Z" fill="url(#ptr-body)" stroke="rgba(4,40,34,.35)" stroke-width="1.2"/>
-              <circle cx="30" cy="24" r="10" fill="url(#ptr-cap)" stroke="#ffffff" stroke-width="2"/>
-              <circle cx="27" cy="21" r="3" fill="rgba(255,255,255,.65)"/>
+              <path d="M30 128 L21.5 34 Q30 26 38.5 34 Z" fill="url(#ptr-body)" stroke="rgba(3,30,26,.55)" stroke-width="1.1"/>
+              <path d="M30 124 L30 36" stroke="rgba(255,255,255,.75)" stroke-width="1"/>
+              <circle cx="30" cy="24" r="17" fill="url(#ptr-cap)" stroke="#e9fff8" stroke-width="2.4"/>
+              <circle cx="30" cy="24" r="10.5" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="1.2"/>
+              <circle cx="30" cy="24" r="5.5" fill="url(#ptr-rivet)"/>
+              <ellipse cx="24" cy="17" rx="6" ry="3.2" fill="rgba(255,255,255,.45)" transform="rotate(-30 24 17)"/>
             </svg>
           </div>
         </div>
@@ -207,8 +210,6 @@
       </div>
 
       <div id="stage-question" class="stage hidden"></div>
-      <div id="stage-results" class="stage hidden"></div>
-      <div id="stage-leaderboard" class="stage hidden"></div>
       <div id="stage-gameover" class="stage hidden"></div>
     </main>
 

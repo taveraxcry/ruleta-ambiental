@@ -117,7 +117,7 @@
       try {
         const c = db();
         const rr = await c.from('rooms').select('*').eq('code', this.code).maybeSingle();
-        const tt = await c.from('teams').select('id,name,score,round_points,created_at').eq('room_code', this.code).order('created_at', { ascending: true });
+        const tt = await c.from('teams').select('id,name,score,correct_count,created_at').eq('room_code', this.code).order('created_at', { ascending: true });
         if (rr.error) throw rr.error;
         if (tt.error) throw tt.error;
         if (!rr.data) { this.markClosed(); return; }
@@ -162,8 +162,9 @@
         currentRound: r.current_round,
         totalRounds: r.total_rounds,
         teams: this.teams.map(function (t) {
-          return { id: t.id, name: t.name, score: t.score, roundPoints: t.round_points, isBot: false, connected: present.indexOf(t.id) !== -1 };
+          return { id: t.id, name: t.name, score: t.score, correct: t.correct_count, isBot: false, connected: present.indexOf(t.id) !== -1 };
         }),
+        wheel: r.wheel || [],
         wheelRotation: r.wheel_rotation,
         spin: r.spin,
         currentCategory: r.current_category,
@@ -250,8 +251,7 @@
     spin() { return this.call('spin'); }
     showQuestion() { return this.call('show_question'); }
     closeAnswers() { return this.call('close_answers'); }
-    showLeaderboard() { return this.call('show_leaderboard'); }
-    nextRound() { return this.call('next_round'); }
+    applyBonus() { return this.call('apply_bonus'); }
 
     async close() {
       store(function () { localStorage.removeItem(HOST_KEY); });
@@ -274,7 +274,7 @@
       } else if (s.phase === 'QUESTION_ACTIVE' && s.questionDeadline) {
         this.later('close_answers', s.questionDeadline - now + 600);   // 600 ms: cubre el margen de red del servidor
       } else if (s.phase === 'ANSWER_LOCKED') {
-        this.later('show_results', CFG.RESULTS_DELAY_MS);
+        this.later('finish_round', CFG.RESULTS_DELAY_MS);   // puntos en segundo plano y de vuelta a la ruleta
       }
     }
 

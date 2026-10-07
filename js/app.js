@@ -19,7 +19,7 @@
     });
   };
   const icon = function (id, cls) { return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' aria-hidden="true"><use href="#' + id + '"/></svg>'; };
-  const catById = function (id) { return R.CATEGORIES.find(function (c) { return c.id === id; }) || { id: id, name: id, color: '#2fd4c0', topic: '' }; };
+  const catById = function (id) { return id === 'BONUS' ? R.BONUS : R.CATEGORIES.find(function (c) { return c.id === id; }) || { id: id, name: id, color: '#2fd4c0', topic: '' }; };
 
   const transport = new R.LocalTransport(CFG.CHANNEL_NAME);
   const app = { role: null, host: null, client: null, state: null, wheel: null, questionKey: '', revealKey: '', lastStage: '', sb: false };
@@ -156,13 +156,11 @@
   }
 
   /* ---------- Pantalla de juego ---------- */
-  const STAGES = ['stage-wheel', 'stage-question', 'stage-results', 'stage-leaderboard', 'stage-gameover'];
+  const STAGES = ['stage-wheel', 'stage-question', 'stage-gameover'];
 
   function stageForPhase(phase) {
     switch (phase) {
       case P.QUESTION_ACTIVE: case P.ANSWER_LOCKED: return 'stage-question';
-      case P.RESULTS: return 'stage-results';
-      case P.LEADERBOARD: return 'stage-leaderboard';
       case P.GAME_OVER: return 'stage-gameover';
       default: return 'stage-wheel';
     }
@@ -172,12 +170,12 @@
     const over = s.phase === P.GAME_OVER;
     $('g-round-label').textContent = over ? 'PARTIDA' : 'RONDA';
     $('g-round').textContent = over ? 'Finalizada' : s.currentRound + ' / ' + s.totalRounds;
-    $('wheel-round').textContent = 'RONDA ' + s.currentRound + ' DE ' + s.totalRounds;
-    const done = over ? 1 : (s.currentRound - (s.phase === P.RESULTS || s.phase === P.LEADERBOARD ? 0 : 1)) / s.totalRounds;
+    $('wheel-round').textContent = 'RONDA ' + s.currentRound + ' DE ' + s.totalRounds + (s.wheel && s.wheel.length ? ' · ' + s.wheel.length + ' OPCIONES' : '');
+    const done = over ? 1 : (s.currentRound - 1) / s.totalRounds;
     $('g-progress').style.width = Math.round(done * 100) + '%';
     if (canAnswer()) {
       const me = s.teams.find(function (t) { return t.id === myTeamId(); });
-      $('g-right').innerHTML = '<span class="score-pill"><span class="sp-name">' + esc(me ? me.name : '') + '</span><b>' + (me ? me.score : 0) + ' pts</b></span>';
+      $('g-right').innerHTML = '<span class="score-pill"><span class="sp-name">' + esc(me ? me.name : '') + '</span>' + (over ? '<b>' + (me ? me.score : 0) + ' pts</b>' : '') + '</span>';
     } else {
       $('g-right').innerHTML = '<span class="score-pill">SALA <b>' + esc(s.roomCode) + '</b></span>';
     }
@@ -193,8 +191,6 @@
 
     if (active === 'stage-wheel') renderWheelStage(s);
     else if (active === 'stage-question') renderQuestionStage(s);
-    else if (active === 'stage-results') renderResultsStage(s);
-    else if (active === 'stage-leaderboard') renderLeaderboardStage(s);
     else renderGameOver(s);
 
     renderHostActions(s);
@@ -210,7 +206,9 @@
     } else if (s.phase === P.SPINNING || (s.phase === P.CATEGORY_SELECTED && !landed)) {
       status.innerHTML = '<span class="spin-label">GIRANDO…</span>';
     } else {
-      status.innerHTML = isHostView() ? 'Tema listo. Muestra la pregunta cuando todos estén atentos.' : 'Prepárate: la pregunta aparecerá en un momento.';
+      status.innerHTML = s.currentCategory === 'BONUS'
+        ? (isHostView() ? '¡BONUS! Pulsa <b>Aplicar bonus</b> para sumar los puntos y seguir.' : '¡BONUS! Esta ronda no hay pregunta.')
+        : (isHostView() ? 'Tema listo. Muestra la pregunta cuando todos estén atentos.' : 'Prepárate: la pregunta aparecerá en un momento.');
     }
     if (!landed) {
       reveal.classList.add('hidden');
@@ -222,13 +220,17 @@
     const key = s.currentRound + '|' + cat.id;
     if (key !== app.revealKey) {
       app.revealKey = key;
+      const bonus = cat.id === 'BONUS';
+      reveal.classList.toggle('bonus', bonus);
       reveal.style.setProperty('--cat', cat.color);
-      reveal.innerHTML = '<span class="eyebrow">CATEGORÍA SELECCIONADA</span>' +
-        '<span class="cat-name">' + esc(cat.name) + '</span>' +
-        '<span class="cat-topic">' + esc(cat.topic) + '</span>';
+      reveal.innerHTML = bonus
+        ? '<span class="eyebrow">¡SALIÓ BONUS!</span><span class="cat-name">★ +' + CFG.BONUS_POINTS + ' PUNTOS</span>' +
+          '<span class="cat-topic">Se salta la pregunta y todos los equipos suman ' + CFG.BONUS_POINTS + ' puntos.</span>'
+        : '<span class="eyebrow">CATEGORÍA SELECCIONADA</span>' +
+          '<span class="cat-name">' + esc(cat.name) + '</span>' +
+          '<span class="cat-topic">' + esc(cat.topic) + '</span>';
       reveal.classList.remove('hidden');
       $('stage-wheel').classList.add('has-reveal');
-      if (canAnswer()) vibrate(30);
       // En pantallas bajas, asegura que la categoría quede a la vista
       setTimeout(function () {
         if (reveal.getBoundingClientRect().bottom > window.innerHeight) reveal.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -274,6 +276,7 @@
         if (mine !== null) status = '<div class="answer-status ok"><span class="as-pill">' + icon('i-check') + 'RESPUESTA REGISTRADA</span></div>';
         else if (locked) status = '<div class="answer-status late">' + icon('i-clock', 'inline') + 'Tiempo agotado · sin respuesta</div>';
         else status = '<div class="answer-status">Elige una opción · solo puedes responder una vez</div>';
+        if (locked) status += '<div class="answer-status">Respuestas cerradas · los puntos se revelan al final</div>';
       }
       if (isHostView()) {
         status += '<div class="answer-status host-count">' +
@@ -324,70 +327,8 @@
     return '<span class="medal' + (rank <= 3 ? ' m' + rank : '') + '">' + rank + '</span>';
   }
 
-  function renderResultsStage(s) {
-    const res = s.results;
-    if (!res) return;
-    const q = s.question;
-    const me = myTeamId();
-    let banner = '';
-    if (me) {
-      const mineRow = res.rows.find(function (r) { return r.teamId === me; });
-      if (mineRow) {
-        if (mineRow.correct) banner = '<div class="my-result good">' + icon('i-check') + '<span>¡Correcto!</span><span class="mr-pts">+' + mineRow.points + '</span><span>pts</span></div>';
-        else if (mineRow.answerIndex === null) banner = '<div class="my-result none">' + icon('i-clock') + '<span>Sin respuesta · 0 pts</span></div>';
-        else banner = '<div class="my-result bad">' + icon('i-x') + '<span>Respuesta incorrecta (' + optionTag(q, mineRow.answerIndex) + ') · 0 pts</span></div>';
-      }
-    }
-
-    const ranked = rankRows(res.rows, function (r) { return r.points; });
-    const list = ranked.map(function (x, i) {
-      const r = x.row;
-      let detail;
-      if (r.answerIndex === null) detail = 'Sin respuesta';
-      else if (r.correct) detail = '<span class="ok">✓ ' + optionTag(q, r.answerIndex) + '</span>· ' + Number(r.responseTime).toFixed(1) + ' s';
-      else detail = '<span class="no">✗ ' + optionTag(q, r.answerIndex) + '</span>· incorrecta';
-      return '<li class="rank-row' + (r.teamId === me ? ' is-me' : '') + (r.correct ? ' correct' : '') + (r.points ? '' : ' zero') + '" style="--i:' + i + ';--w:' + r.points + '%">' +
-        '<span class="bar"></span>' + medalHtml(x.rank, r.points) +
-        '<span class="rname">' + esc(r.name) + '<small>' + detail + '</small></span>' +
-        '<span class="rpts">' + r.points + '<small>PTS</small></span></li>';
-    }).join('');
-
-    $('stage-results').innerHTML =
-      '<div class="results-head"><div><span class="eyebrow">Ronda ' + res.round + '</span><h2 class="section-title">RESULTADOS</h2></div></div>' + banner +
-      '<div class="correct-box"><span class="cb-icon">' + icon('i-check') + '</span><div><span class="eyebrow">Respuesta correcta</span>' +
-      '<span class="correct-text"><b>' + optionTag(q, res.correctAnswer) + '.</b> ' + esc(q.options[res.correctAnswer]) + '</span>' +
-      (res.explanation ? '<span class="explain">' + esc(res.explanation) + '</span>' : '') + '</div></div>' +
-      '<h3 class="sub-title">PUNTOS DE LA RONDA</h3><ol class="rank-list">' + list + '</ol>';
-  }
-
   function sortedByScore(teams, scoreOf) {
     return teams.slice().sort(function (a, b) { return scoreOf(b) - scoreOf(a); });
-  }
-
-  function renderLeaderboardStage(s) {
-    const me = myTeamId();
-    const score = function (t) { return t.score; };
-    const ranked = rankRows(sortedByScore(s.teams, score), score);
-    // Posición antes de esta ronda, para mostrar subidas y bajadas
-    const before = rankRows(sortedByScore(s.teams, function (t) { return t.score - t.roundPoints; }), function (t) { return t.score - t.roundPoints; });
-    const prevRank = {};
-    before.forEach(function (x) { prevRank[x.row.id] = x.rank; });
-    const max = Math.max(1, ranked.length ? ranked[0].row.score : 1);
-
-    const rows = ranked.map(function (x, i) {
-      const t = x.row;
-      const moved = s.currentRound > 1 ? prevRank[t.id] - x.rank : 0;
-      const move = moved > 0 ? '<span class="move up">▲' + moved + '</span>' : moved < 0 ? '<span class="move down">▼' + (-moved) + '</span>' : '';
-      const gain = t.roundPoints ? '+' + t.roundPoints : '';
-      return '<tr class="' + (t.id === me ? 'is-me' : '') + '" style="--i:' + i + '" data-row="' + esc([x.rank, t.name, gain, t.score].join('|')) + '"><td class="pos">' + medalHtml(x.rank, t.score) + '</td>' +
-        '<td><div class="tname"><span>' + esc(t.name) + move + (gain ? '<em class="gain-inline">' + gain + '</em>' : '') + '</span>' +
-        '<span class="tbar"><i style="--w:' + Math.round(100 * t.score / max) + '%"></i></span></div></td>' +
-        '<td class="gain r gain-col">' + (t.roundPoints ? '+' + t.roundPoints : '') + '</td>' +
-        '<td class="pts r">' + t.score + '</td></tr>';
-    }).join('');
-    $('stage-leaderboard').innerHTML =
-      '<div class="results-head"><div><span class="eyebrow">Tras la ronda ' + s.currentRound + ' de ' + s.totalRounds + '</span><h2 class="section-title">MARCADOR</h2></div></div>' +
-      '<table class="board"><thead><tr><th>POS.</th><th>EQUIPO</th><th class="r gain-col">RONDA</th><th class="r">PUNTOS</th></tr></thead><tbody>' + rows + '</tbody></table>';
   }
 
   function renderGameOver(s) {
@@ -399,10 +340,26 @@
     const list = ranked.map(function (x, i) {
       return '<li class="rank-row' + (x.row.id === myTeamId() ? ' is-me' : '') + '" style="--i:' + i + ';--w:' + Math.round(100 * x.row.score / Math.max(1, top)) + '%">' +
         '<span class="bar"></span>' + medalHtml(x.rank, x.row.score) +
-        '<span class="rname">' + esc(x.row.name) + '</span><span class="rpts">' + x.row.score + '<small>PTS</small></span></li>';
+        '<span class="rname">' + esc(x.row.name) + '<small>' + (x.row.correct || 0) + ' acierto' + (x.row.correct === 1 ? '' : 's') + '</small></span>' +
+        '<span class="rpts">' + x.row.score + '<small>PTS</small></span></li>';
     }).join('');
-    if ($('stage-gameover').dataset.rendered === 'yes') return;   // no reiniciar la animación final
-    $('stage-gameover').dataset.rendered = 'yes';
+    const stage = $('stage-gameover');
+    const winnerText = winners.map(function (w) { return esc(w.name); }).join(' · ');
+    const eyebrow = winners.length > 1 ? 'EMPATE EN EL PRIMER LUGAR' : 'GANADOR';
+    // Los puntajes finales pueden llegar un instante después del cambio de fase: se actualizan
+    // los datos sin volver a lanzar la animación del confeti.
+    if (stage.dataset.rendered === 'yes') {
+      const sig = list + '|' + winnerText + '|' + top;
+      if (stage.dataset.sig === sig) return;
+      stage.dataset.sig = sig;
+      stage.querySelector('.winner-card .eyebrow').textContent = eyebrow;
+      stage.querySelector('.winner-name').innerHTML = winnerText;
+      stage.querySelector('.winner-score').textContent = top + ' PUNTOS';
+      stage.querySelector('.rank-list').innerHTML = list;
+      return;
+    }
+    stage.dataset.rendered = 'yes';
+    stage.dataset.sig = list + '|' + winnerText + '|' + top;
     let confetti = '';
     const colors = ['#5ef0bd', '#47c8f5', '#ffd66b', '#8be07a', '#f1c68a'];
     for (let i = 0; i < 26; i++) {
@@ -429,14 +386,13 @@
         case P.SPINNING: html = '<button class="btn btn-ghost btn-xl" disabled>GIRANDO…</button>'; break;
         case P.CATEGORY_SELECTED:
           html = app.wheel.anim ? '<button class="btn btn-ghost btn-xl" disabled>GIRANDO…</button>'
-            : '<button class="btn btn-primary btn-xl" data-action="show">MOSTRAR PREGUNTA</button>';
+            : s.currentCategory === 'BONUS'
+              ? '<button class="btn btn-primary btn-xl" data-action="bonus">★ APLICAR BONUS Y SEGUIR</button>'
+              : '<button class="btn btn-primary btn-xl" data-action="show">MOSTRAR PREGUNTA</button>';
           break;
         case P.QUESTION_ACTIVE: html = '<button class="btn btn-warn btn-xl" data-action="close">CERRAR RESPUESTAS</button>'; break;
-        case P.ANSWER_LOCKED: html = '<button class="btn btn-ghost btn-xl" disabled>CALCULANDO RESULTADOS…</button>'; break;
-        case P.RESULTS: html = '<button class="btn btn-primary btn-xl" data-action="board">VER MARCADOR</button>'; break;
-        case P.LEADERBOARD:
-          html = '<button class="btn btn-primary btn-xl" data-action="next">' +
-            (s.currentRound >= s.totalRounds ? 'FINALIZAR PARTIDA' : 'SIGUIENTE RONDA →') + '</button>';
+        case P.ANSWER_LOCKED:
+          html = '<button class="btn btn-ghost btn-xl" disabled>' + (s.currentRound >= s.totalRounds ? 'CALCULANDO PUNTAJE FINAL…' : 'VOLVIENDO A LA RULETA…') + '</button>';
           break;
         case P.GAME_OVER:
           html = '<button class="btn btn-ghost btn-xl" data-action="restart">' + (app.role === 'preview' ? 'SALIR DEL PREVIEW' : 'NUEVA PARTIDA') + '</button>';
@@ -627,7 +583,6 @@
 
   function bindEvents() {
     $('btn-create').addEventListener('click', createRoom);
-    $('btn-preview').addEventListener('click', startPreview);
     $('btn-join').addEventListener('click', function () { showJoinError(''); show('screen-join'); $('join-code').focus(); });
     $('btn-join-back').addEventListener('click', function () { show('screen-home'); });
     $('btn-sound').addEventListener('click', function () { R.Sound.setEnabled(!R.Sound.isEnabled()); updateSoundButton(); });
@@ -670,8 +625,7 @@
         case 'spin': R.Sound.unlock(); b.disabled = true; h.spin(); break;   // el sonido nace del clic en GIRAR
         case 'show': b.disabled = true; h.showQuestion(); break;
         case 'close': b.disabled = true; h.closeAnswers(); break;
-        case 'board': b.disabled = true; h.showLeaderboard(); break;
-        case 'next': b.disabled = true; h.nextRound(); break;
+        case 'bonus': b.disabled = true; h.applyBonus(); break;
         case 'restart':
           if (app.role === 'preview') location.reload(); else leave();
           break;
@@ -699,7 +653,7 @@
       mode.classList.remove('hidden');
       mode.textContent = R.SUPABASE && R.SUPABASE.url
         ? '⚠ No se pudo cargar Supabase. Modo local de prueba.'
-        : 'Modo local (sin Supabase): las salas solo funcionan entre pestañas de este navegador. Para revisar el juego usa PREVIEW / DEMO.';
+        : 'Modo local (sin Supabase): las salas solo funcionan entre pestañas de este navegador.';
     } else {
       $('btn-demo').classList.add('hidden');
     }
@@ -708,6 +662,8 @@
       $('btn-create').querySelector('small').textContent = 'Disponible solo en computador';
     }
   }
+
+  R.debugState = function () { return app.state; };   // solo para las pruebas automáticas
 
   function initWheel() {
     app.wheel = new R.Wheel({
@@ -732,6 +688,7 @@
 
     // Recuperación de sesión tras recargar la página (anfitrión o equipo)
     (async function () {
+      if (new URLSearchParams(location.search).has('demo')) { history.replaceState(null, '', location.pathname); return startPreview(); }
       if (app.sb && await resumeHost()) return;
       const saved = session.load();
       const linkCode = new URLSearchParams(location.search).get('sala');

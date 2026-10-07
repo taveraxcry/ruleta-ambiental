@@ -57,7 +57,7 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
 
   console.log('\n1. Sala y equipos');
   check(!(await host.locator('#btn-create').isDisabled()), 'el anfitrión (computador) puede crear sala');
-  check(await teams[0].locator('#btn-create').isDisabled(), 'en un teléfono el botón de crear sala está deshabilitado');
+  check(!(await teams[0].locator('#btn-create').isVisible()) && await teams[0].locator('#btn-join').isVisible(), 'en un teléfono solo aparece "Unirse a una sala" (crear sala es solo para computador)');
   check(!(await host.locator('#mode-badge').isVisible()), 'la app corre en modo Supabase (sin aviso de modo local)');
   await host.click('#btn-create');
   await visible(host, '#screen-host-lobby');
@@ -110,16 +110,33 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   await dup.waitForFunction(() => /ya comenzó/.test(document.querySelector('#join-error').textContent));
   check(true, 'no se admiten equipos nuevos con la partida iniciada');
 
-  async function playRound(n, plan) {
-    console.log('\n' + (n === 1 ? '3' : '5') + '. Ronda ' + n);
+  /* Solo pruebas: arma la ruleta de la sala para que el giro sea determinista. */
+  async function setWheel(filterFn) {
+    const r = await roomRow(code);
+    const p = (await bridge.db.admin.query('select wheel_qids from public.room_private where room_code=$1', [code])).rows[0];
+    const segs = r.wheel.map((s, i) => ({ c: s.c, q: p.wheel_qids[i] })).filter(filterFn);
+    await bridge.db.admin.query('update public.rooms set wheel=$2 where code=$1', [code, JSON.stringify(segs.map((s) => ({ c: s.c })))]);
+    await bridge.db.admin.query('update public.room_private set wheel_qids=$2 where room_code=$1', [code, segs.map((s) => s.q)]);
+  }
+  const dbScores = async () => Object.fromEntries((await bridge.db.admin.query('select name, score, correct_count from public.teams where room_code=$1', [code])).rows.map((r) => [r.name, r]));
+  const wheelCounts = () => everyone((p) => p.evaluate(() => window.Ruleta.debugState().wheel.length));
+
+  async function spinAll(label) {
     await host.click('[data-action="spin"]');
-    await everyone((p) => visible(p, '#category-reveal'));
+    await everyone((p) => visible(p, '#category-reveal', 20000));
     const cats = await everyone((p) => text(p, '#category-reveal .cat-name'));
-    check(allEqual(cats), 'todos ven la misma categoría: ' + cats[0]);
+    check(allEqual(cats), 'todos ven el mismo resultado de la ruleta: ' + cats[0].replace(/\n/g, ' '));
     const rot = await everyone((p) => p.locator('#wheel-rotor').evaluate((e) => e.style.transform));
     check(allEqual(rot), 'todos ven el mismo giro de ruleta (' + rot[0] + ')');
     check((await Promise.all(teams.map((p) => p.locator('[data-action]').count()))).every((c) => c === 0), 'los equipos no tienen botones de acción durante la ruleta');
+    return cats[0];
+  }
 
+  async function playQuestionRound(n, plan) {
+    console.log('\n' + (n + 2) + '. Ronda ' + n + ' (pregunta)');
+    await setWheel((s) => s.c !== 'BONUS');   // esta ronda debe ser de pregunta
+    await sleep(600);
+    await spinAll();
     await host.click('[data-action="show"]');
     await everyone((p) => visible(p, '#stage-question .q-text'));
     const qs = await everyone((p) => text(p, '.q-text'));
@@ -128,48 +145,48 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
     const cats2 = await everyone((p) => text(p, '.cat-badge'));
     const row = await roomRow(code);
     const qCat = (await bridge.db.admin.query('select category from public.questions where id=$1', [row.question.id])).rows[0].category;
-    check(allEqual(cats2) && qCat === row.current_category && !['ROTTERDAM', 'MONTREAL'].includes(qCat),
-      'la pregunta pertenece a la categoría del giro (' + qCat + ') y la categoría está habilitada');
+    check(allEqual(cats2) && qCat === row.current_category, 'la pregunta pertenece a la categoría del segmento (' + qCat + ')');
     const startedAt = Date.parse(row.question_started_at);
     check(Date.parse(row.question_deadline) - startedAt === 20000, 'el servidor fijó 20 segundos de ventana');
     const timers = (await everyone((p) => text(p, '#timer-num'))).map(Number);
     check(Math.max(...timers) - Math.min(...timers) <= 1 && timers[0] >= 18, 'todos tienen el mismo cronómetro: ' + timers.join(', '));
-    const html = await teams[0].content();
-    check(!/correct_answer|correctAnswer/.test(html), 'la respuesta correcta no está en el HTML del equipo');
+    check(!/correct_answer|correctAnswer/.test(await teams[0].content()), 'la respuesta correcta no está en el HTML del equipo');
     check(await teams[0].evaluate(() => !window.Ruleta.QUESTIONS), 'el teléfono del equipo nunca descarga el banco de preguntas con respuestas');
 
     const ok = await correctIndex(code);
     const wrong = (ok + 1) % opts[0].length;
-    // Eco Team responde con mouse; los demás equipos con pantalla táctil
-    const pick = (page, i) => {
+    const pick = (page, i) => {   // Eco Team responde con mouse; los demás con pantalla táctil
       const opt = page.locator('button.option[data-index="' + i + '"]');
       return page === A ? opt.click() : opt.tap();
     };
     const waitUntil = async (ms) => { const d = startedAt + ms - Date.now(); if (d > 0) await sleep(d); };
-
-    for (const step of plan.answers) {   // [{page, at(ms desde inicio), option:'ok'|'wrong'}]
+    for (const step of plan.answers) {
       await waitUntil(step.at);
       await pick(step.page, step.option === 'ok' ? ok : wrong);
     }
-    await A.locator('.answer-status.ok, .answer-status').first().waitFor();
+    // Espera a que las respuestas lleguen al servidor
+    for (let i = 0; i < 30; i++) {
+      const c = (await bridge.db.admin.query('select count(*)::int n from public.answers where room_code=$1 and round=$2', [code, n])).rows[0].n;
+      if (c >= plan.answers.length) break;
+      await sleep(150);
+    }
     if (plan.checkLocks) {
       check(await host.locator('#stage-question button.option').count() === 0 && await host.locator('#stage-question .option.readonly').count() > 0,
         'en el computador del anfitrión las opciones son de solo lectura (los equipos responden)');
-      check(/RESPUESTA REGISTRADA/.test(await text(A, '.answer-status')), 'el equipo ve "✓ RESPUESTA REGISTRADA"');
+      const aStatus = await A.locator('#stage-question').innerText();
+      check(/RESPUESTA REGISTRADA/.test(aStatus), 'el equipo ve "✓ RESPUESTA REGISTRADA"' + (/RESPUESTA REGISTRADA/.test(aStatus) ? '' : ' — ve: ' + aStatus.replace(/s+/g, ' ').slice(-160)));
       check(await A.locator('.option:not([disabled])').count() === 0, 'tras responder, las opciones quedan bloqueadas');
       await A.locator('.option').nth(wrong === 0 ? 1 : 0).click({ force: true, timeout: 1000 }).catch(() => {});
       const ans = (await bridge.db.admin.query('select count(*)::int n from public.answers where room_code=$1 and round=$2', [code, n])).rows[0].n;
       check(ans === plan.answers.length, 'solo hay una respuesta por equipo en la base (' + ans + ')');
       check(await B.locator('#answer-count').count() === 0 && !/pts|puntos|respondi/i.test(await text(B, '.answer-status')), 'un equipo no ve quién respondió ni puntos durante la pregunta');
-      await host.waitForFunction((n) => /Respuestas recibidas: \d \/ 3/.test(document.querySelector('#answer-count').textContent), n);
+      await host.waitForFunction(() => /Respuestas recibidas: \d \/ 3/.test(document.querySelector('#answer-count').textContent));
       check(true, 'el anfitrión ve el conteo de respuestas: ' + (await text(host, '#answer-count')));
-    }
-    if (plan.checkLocks) {   // teléfono pequeño sin responder: al bajar, el tiempo pasa al encabezado
       const scrollable = await C.evaluate(() => document.documentElement.scrollHeight > innerHeight + 40);
       if (scrollable) {
         await C.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         await C.waitForSelector('#g-timer', { state: 'visible', timeout: 3000 }).catch(() => {});
-        check(await C.locator('#g-timer').isVisible() && /d+ s/.test(await text(C, '#g-timer')), 'al hacer scroll en el teléfono, el tiempo sigue visible arriba: ' + (await text(C, '#g-timer').catch(() => '')));
+        check(await C.locator('#g-timer').isVisible() && /\d+ s/.test(await text(C, '#g-timer')), 'al hacer scroll en el teléfono, el tiempo sigue visible arriba');
         await C.evaluate(() => window.scrollTo(0, 0));
       } else {
         check(true, 'en el teléfono pequeño la pregunta cabe entera sin scroll');
@@ -186,79 +203,67 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
       check(after.length === 1 && after[0].id === before, 'recarga accidental: el equipo recupera su sesión sin duplicarse');
       check(await B.locator('.option:not([disabled])').count() === 0, 'tras recargar, su respuesta sigue bloqueada');
     }
-    if (plan.manualClose) {
-      await host.click('[data-action="close"]');
-    }
-    await everyone((p) => visible(p, '#stage-results', 40000));
-    const rows = await everyone((p) => rowsOf(p, '#stage-results .rank-row'));
-    check(allEqual(rows), 'todos reciben los mismos resultados');
-    if (!allEqual(rows)) console.log('     rows:', JSON.stringify(rows));
-    const correctBox = await everyone((p) => text(p, '.correct-text'));
-    check(allEqual(correctBox), 'todos ven la misma respuesta correcta: ' + correctBox[0]);
-
-    const res = (await roomRow(code)).results;
-    for (const r of res.rows) {
-      const exp = expectedPoints(r.responseTime, r.correct);
-      check(r.points === exp, `${r.name}: ${r.correct ? 'correcta' : r.answerIndex === null ? 'sin respuesta' : 'incorrecta'}` +
-        `${r.responseTime != null ? ' a ' + r.responseTime + ' s' : ''} → ${r.points} pts (tabla: ${exp})`);
-    }
-    return res;
+    const wheelBefore = (await wheelCounts())[0];
+    if (plan.manualClose) await host.click('[data-action="close"]');
+    await Promise.all(teams.map((p) => p.waitForSelector('.answer-status:has-text("los puntos se revelan al final")', { timeout: 40000 })));
+    await host.waitForSelector('#host-actions button:has-text("VOLVIENDO A LA RULETA")', { timeout: 5000 });
+    check(true, 'al cerrar, los equipos ven "Respuestas cerradas · los puntos se revelan al final" y el anfitrión "Volviendo a la ruleta"');
+    await everyone((p) => visible(p, '#stage-wheel', 15000));
+    check(true, 'y vuelven DIRECTO a la ruleta, sin pantalla de resultados ni marcador');
+    const wc = await wheelCounts();
+    check(allEqual(wc) && wc[0] === wheelBefore - 1, 'el segmento usado desaparece de la ruleta en todos los dispositivos (' + wheelBefore + ' → ' + wc[0] + ')');
+    check((await Promise.all(teams.map((p) => text(p, '#g-right')))).every((t) => !/pts/.test(t)), 'los equipos no ven su puntaje durante la partida');
+    check((await Promise.all(all().map((p) => p.locator('.my-result, .board, #stage-results').count()))).every((c) => c === 0), 'no hay resultados ni marcador entre rondas');
   }
+  const all = () => [host, ...teams];
 
-  const r1 = await playRound(1, {
+  await bridge.db.admin.query('update public.rooms set total_rounds = 3 where code=$1', [code]);
+  await playQuestionRound(1, {
     checkLocks: true, reloadB: true, manualClose: false,
     answers: [{ page: A, at: 100, option: 'ok' }, { page: B, at: 600, option: 'wrong' }]   // C no responde → se cierra solo a los 20 s
   });
-  const by1 = Object.fromEntries(r1.rows.map((r) => [r.name, r]));
-  check(by1['Eco Team'].points === 100, 'ronda 1: respuesta correcta rápida (≤2 s) = 100');
-  check(by1['Los Verdes'].points === 0, 'ronda 1: incorrecta y rápida = 0');
-  check(by1['Guardianes'].points === 0 && by1['Guardianes'].answerIndex === null, 'ronda 1: sin respuesta = 0');
-  check(/\+100/.test(await text(A, '.my-result.good')) && await B.locator('.my-result.bad').count() === 1 && await C.locator('.my-result.none').count() === 1,
-    'cada equipo ve su propio resultado (correcto / incorrecto / sin respuesta)');
-
-  await host.click('[data-action="board"]');
-  await everyone((p) => visible(p, '#stage-leaderboard'));
-  // Cada fila expone sus datos (posición|equipo|puntos de ronda|total): el diseño cambia entre móvil y computador
-  const boardOf = (p) => p.locator('#stage-leaderboard .board tbody tr').evaluateAll((trs) => trs.map((tr) => tr.dataset.row));
-  const boards = await everyone(boardOf);
-  check(allEqual(boards) && boards[0][0] === '1|Eco Team|+100|100', 'todos ven el mismo marcador (Eco Team lidera con 100)');
+  let sc = await dbScores();
+  check(sc['Eco Team'].score === 100 && sc['Los Verdes'].score === 0 && sc['Guardianes'].score === 0,
+    'puntos guardados en segundo plano: correcta rápida 100, incorrecta 0, sin respuesta 0');
 
   await host.reload();
-  await visible(host, '#stage-leaderboard');
-  check((await text(host, '#g-right')).includes(code) && await host.locator('[data-action="next"]').count() === 1, 'el anfitrión recarga la página y recupera la partida en curso');
-
-  await host.click('[data-action="next"]');
-  await everyone((p) => visible(p, '#stage-wheel'));
+  await visible(host, '#stage-wheel');
+  check((await text(host, '#g-right')).includes(code) && await host.locator('[data-action="spin"]').count() === 1, 'el anfitrión recarga la página y recupera la partida en curso');
   const rounds = await everyone((p) => text(p, '#g-round'));
-  check(rounds.every((r) => r === '2 / 2'), 'todos pasan a la ronda 2 / 2');
+  check(rounds.every((r) => r === '2 / 3'), 'todos están en la ronda 2 / 3');
 
-  const r2 = await playRound(2, {
+  await playQuestionRound(2, {
     checkLocks: false, reloadB: false, manualClose: true,
     answers: [{ page: A, at: 400, option: 'wrong' }, { page: B, at: 3000, option: 'ok' }, { page: C, at: 5000, option: 'ok' }]
   });
-  const by2 = Object.fromEntries(r2.rows.map((r) => [r.name, r]));
-  check(by2['Los Verdes'].points === 90, 'ronda 2: correcta a ~3 s = 90');
-  check(by2['Guardianes'].points === 80, 'ronda 2: correcta a ~5 s = 80');
-  check(by2['Eco Team'].points === 0, 'ronda 2: incorrecta rápida = 0');
+  sc = await dbScores();
+  check(sc['Los Verdes'].score === 90, 'correcta a ~3 s = 90');
+  check(sc['Guardianes'].score === 80, 'correcta a ~5 s = 80');
+  check(sc['Eco Team'].score === 100, 'incorrecta rápida = 0 (Eco Team sigue en 100)');
 
-  await host.click('[data-action="board"]');
-  await everyone((p) => visible(p, '#stage-leaderboard'));
-  const boards2 = await everyone(boardOf);
-  check(allEqual(boards2), 'marcador acumulado idéntico en todos los dispositivos: ' + boards2[0].join(' · '));
-  check(/FINALIZAR/.test(await text(host, '[data-action="next"]')), 'tras la última ronda el anfitrión ve "FINALIZAR PARTIDA"');
-  await host.click('[data-action="next"]');
+  console.log('\n5. Ronda 3 (BONUS)');
+  // Las rondas de pregunta quitaron los BONUS: se dejan 3 BONUS explícitos para esta ronda
+  await bridge.db.admin.query('update public.rooms set wheel=$2 where code=$1', [code, JSON.stringify([{ c: 'BONUS' }, { c: 'BONUS' }, { c: 'BONUS' }])]);
+  await bridge.db.admin.query("update public.room_private set wheel_qids='{0,0,0}' where room_code=$1", [code]);
+  await sleep(600);
+  const bonusCat = await spinAll();
+  const rb = await roomRow(code);
+  check(/\+5 PUNTOS/.test(bonusCat), 'sale BONUS en todos los dispositivos' + (/\+5 PUNTOS/.test(bonusCat) ? '' : ' — ve: ' + bonusCat + ' | BD: ' + rb.current_category + ' ' + JSON.stringify(rb.wheel) + ' ' + JSON.stringify(rb.spin)));
+  check(await host.locator('[data-action="show"]').count() === 0 && await host.locator('[data-action="bonus"]').count() === 1, 'el anfitrión no puede mostrar pregunta, solo aplicar el bonus');
+  await host.click('[data-action="bonus"]');
 
   console.log('\n6. Final');
   await everyone((p) => visible(p, '#stage-gameover'));
+  sc = await dbScores();
+  check(sc['Eco Team'].score === 105 && sc['Los Verdes'].score === 95 && sc['Guardianes'].score === 85, 'el BONUS sumó 5 a todos: 105 / 95 / 85');
+  check(sc['Eco Team'].correct_count === 1 && sc['Los Verdes'].correct_count === 1 && sc['Guardianes'].correct_count === 1, 'aciertos guardados: 1 / 1 / 1');
   const winners = await everyone((p) => text(p, '.winner-name'));
   check(allEqual(winners) && /ECO TEAM/i.test(winners[0]), 'todos ven el mismo ganador: ' + winners[0].replace(/\n/g, ' '));
   const scoreTxt = await everyone((p) => text(p, '.winner-score'));
-  check(allEqual(scoreTxt) && /100/.test(scoreTxt[0]), 'puntuación final del ganador: ' + scoreTxt[0]);
+  check(allEqual(scoreTxt) && /105/.test(scoreTxt[0]), 'puntuación final del ganador: ' + scoreTxt[0]);
   const finals = await everyone((p) => rowsOf(p, '#stage-gameover .rank-row'));
-  check(allEqual(finals) && finals[0].length === 3, 'clasificación completa idéntica para todos (3 equipos)');
-  if (!allEqual(finals)) console.log('     finals:', JSON.stringify(finals));
-  const dbScores = (await bridge.db.admin.query('select name, score from public.teams where room_code=$1 order by score desc', [code])).rows;
-  check(JSON.stringify(dbScores.map((r) => r.score)) === JSON.stringify([100, 90, 80]), 'puntos guardados en la base: ' + dbScores.map((r) => r.name + ' ' + r.score).join(', '));
+  check(allEqual(finals) && finals[0].length === 3 && /acierto/.test(finals[0][0]), 'clasificación final idéntica para todos, con puntos y aciertos');
+  check(/105 pts/.test(await text(A, '#g-right')), 'al final cada equipo ya ve su puntaje');
 
   check(errors.length === 0, 'sin errores de JavaScript en ningún dispositivo' + (errors.length ? ': ' + errors.join(' | ') : ''));
 

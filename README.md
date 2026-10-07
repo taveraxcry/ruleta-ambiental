@@ -4,7 +4,17 @@ Concurso educativo multijugador sobre gestión ambiental y logística reversa. H
 
 - **Anfitrión** (computador): crea la sala, gira la ruleta y controla cada paso. En su pantalla las opciones son de solo lectura: responden los equipos.
 - **Equipos** (teléfonos o computadores): entran con el código y el nombre que quieran; un equipo = un dispositivo.
-- **PREVIEW / DEMO** (un solo computador): recorre el juego completo con datos simulados para revisarlo. Controlas la partida y respondes como "Tu equipo" contra 4 equipos simulados. No usa Supabase, no crea salas y no envía nada por la red.
+- **Crear sala** solo aparece en computador; en teléfonos la página solo ofrece **Unirse a una sala** (o se entra directo escaneando el QR).
+- **Revisión / demo** (oculta): `?demo=1` al final del enlace abre una partida simulada en un solo computador. No usa Supabase ni crea salas.
+
+## Cómo se juega
+
+1. El anfitrión gira la ruleta. Cada segmento es **una pregunta** (con el color de su tema) o un **BONUS**.
+2. Si sale una pregunta, todos los equipos la reciben a la vez y tienen **20 s**. Una sola respuesta por equipo.
+3. Al cerrar, **no se muestran resultados**: se vuelve directo a la ruleta. Los puntos se guardan en segundo plano.
+4. Si sale **BONUS**, se salta la pregunta y **todos los equipos suman 5 puntos**.
+5. Cada segmento usado **desaparece**: la ruleta conserva su tamaño pero tiene cada vez menos opciones (23 al inicio: 20 preguntas + 3 BONUS).
+6. Tras la ronda 10 se revela la **clasificación final** con puntos y aciertos de cada equipo.
 
 ## Puesta en marcha (una sola vez)
 
@@ -33,8 +43,8 @@ Mientras `supabase-config.js` esté vacío, la app arranca en **modo local** (va
 ## Preguntas y categorías
 
 - El banco definitivo (20 preguntas) está en [js/questions.js](js/questions.js). Tras editarlo: `node tools/generate-seed.js` y vuelve a ejecutar `supabase/seed_questions.sql` en Supabase.
-- Una partida real usa 10 preguntas (`TOTAL_ROUNDS`) sin repetir. La ruleta solo cae en categorías que todavía tienen preguntas sin usar, y la pregunta siempre es de la categoría que salió.
-- **ROTTERDAM** y **MONTREAL** aparecen en la ruleta como "Próximamente" (`enabled: false` en `js/config.js`) porque aún no tienen material. Nunca se seleccionan. Para activarlas: añade sus preguntas, cambia `enabled` a `true` y regenera el seed.
+- Una partida real tiene 10 rondas (`TOTAL_ROUNDS`). Ninguna pregunta se repite y la pregunta siempre es la del segmento que salió. El orden de los segmentos lo arman `R.buildWheel` (js/config.js) y `_build_wheel` (SQL) con el mismo algoritmo.
+- **ROTTERDAM** y **MONTREAL** no tienen preguntas todavía, así que no tienen segmentos en la ruleta (`enabled: false` en `js/config.js`). Para activarlas: añade sus preguntas, cambia `enabled` a `true` y regenera el seed.
 - **INTEGRADORA** es un segmento propio para las preguntas que relacionan varios instrumentos.
 - En una partida con Supabase el navegador de los equipos **no descarga** `js/questions.js`; solo lo cargan el Preview y el modo local. Ojo: como el repositorio es público, el archivo (y por tanto las respuestas) es visible en GitHub.
 
@@ -59,9 +69,10 @@ Ticks de la ruleta, selección y confirmación se sintetizan con Web Audio (sin 
 ```
 cd tests
 npm install
-npm run test:sql      # seguridad, flujo, puntuación y selección de preguntas sobre Postgres real
-npm run test:e2e      # anfitrión + 3 equipos móviles (mouse y táctil), partida completa de 2 rondas
-npm run test:preview  # Preview completo: ruleta, sonido, A/B/C/D, V/F, bloqueo, tiempo agotado, final, 0 llamadas a Supabase
+npm run test:questions  # las 20 preguntas contra la lista oficial, jugadas una a una en el motor, y los 3 BONUS
+npm run test:sql        # seguridad, flujo, ruleta que se encoge, BONUS y puntuación sobre Postgres real
+npm run test:e2e        # anfitrión + 3 teléfonos (QR, mouse y táctil): 2 rondas de pregunta + BONUS + final
+npm run test:preview    # ruleta, sonido, A/B/C/D, V/F, bloqueo, tiempo agotado, final, teléfono, 0 llamadas a Supabase
 ```
 
 Las pruebas usan un Postgres embebido con el mismo `schema.sql` y un puente que imita la API de Supabase. **No** sustituyen una prueba con el proyecto real de Supabase y varios dispositivos físicos.

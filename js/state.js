@@ -19,9 +19,10 @@
     LOBBY: ['WAITING'],
     WAITING: ['SPINNING'],
     SPINNING: ['CATEGORY_SELECTED'],
-    CATEGORY_SELECTED: ['QUESTION_ACTIVE'],
+    CATEGORY_SELECTED: ['QUESTION_ACTIVE', 'NEXT_ROUND', 'GAME_OVER'],   // BONUS: salta la pregunta
     QUESTION_ACTIVE: ['ANSWER_LOCKED'],
-    ANSWER_LOCKED: ['RESULTS'],
+    ANSWER_LOCKED: ['NEXT_ROUND', 'GAME_OVER', 'RESULTS'],   // los puntos se guardan sin mostrarse
+    // RESULTS y LEADERBOARD ya no se usan entre rondas: el marcador solo aparece al final
     RESULTS: ['LEADERBOARD'],
     LEADERBOARD: ['NEXT_ROUND', 'GAME_OVER'],
     NEXT_ROUND: ['WAITING'],
@@ -39,9 +40,10 @@
       phase: PHASES.LOBBY,
       currentRound: 1,
       totalRounds: totalRounds,
-      teams: [],               // { id, name, score, roundPoints, isBot, lastSeen, connected }
+      teams: [],               // { id, name, score, correct, isBot, lastSeen, connected }
+      wheel: [],               // segmentos que quedan: { c: categoría | 'BONUS', q: id de pregunta (privado) }
       wheelRotation: 0,        // grados acumulados de la ruleta
-      spin: null,              // { id, categoryIndex, rotation, durationMs }
+      spin: null,              // { id, categoryIndex (índice del segmento), rotation, durationMs }
       currentCategory: null,   // id de categoría
       currentQuestion: null,   // pregunta completa (incluye correctAnswer: NO se publica tal cual)
       usedQuestionIds: [],
@@ -67,8 +69,9 @@
       currentRound: s.currentRound,
       totalRounds: s.totalRounds,
       teams: s.teams.map(function (t) {
-        return { id: t.id, name: t.name, score: t.score, roundPoints: t.roundPoints, isBot: t.isBot, connected: t.connected };
+        return { id: t.id, name: t.name, score: t.score, correct: t.correct, isBot: t.isBot, connected: t.connected };
       }),
+      wheel: s.wheel.map(function (seg) { return { c: seg.c }; }),   // sin ids de pregunta
       wheelRotation: s.wheelRotation,
       spin: s.spin,
       currentCategory: s.phase === PHASES.WAITING || s.phase === PHASES.SPINNING ? null : s.currentCategory,

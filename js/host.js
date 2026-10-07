@@ -37,6 +37,7 @@
     constructor(transport, totalRounds) {
       this.transport = transport;
       this.state = R.createInitialState(generateRoomCode(), totalRounds || CFG.TOTAL_ROUNDS);
+      this.state.wheel = R.buildWheel(R.QUESTIONS || []);
       this.listeners = [];
       this.timers = [];
       transport.on(this.handleMessage.bind(this));
@@ -138,7 +139,7 @@
       const err = validateTeamName(name, s.teams, id);
       if (err) return { ok: false, error: err };
       const team = {
-        id: id, name: normalizeName(name), score: 0, roundPoints: 0,
+        id: id, name: normalizeName(name), score: 0, correct: 0,
         isBot: !!isBot, lastSeen: Date.now(), connected: true
       };
       s.teams.push(team);
@@ -158,21 +159,28 @@
       this.publish();
     }
 
+    /* El segmento (y con él la categoría y la pregunta) se decide AQUÍ, una sola vez, en el estado autoritativo. */
     spin() {
       const s = this.state;
       if (s.phase !== P.WAITING) return;
-      const cats = R.CATEGORIES;
-      // La categoría y la pregunta se deciden AQUÍ, una sola vez, en el estado autoritativo.
-      const pick = this.pickRound();
-      const index = pick.index;
-      const seg = 360 / cats.length;
-      const jitter = (Math.random() - 0.5) * seg * 0.7;          // aterriza dentro del segmento, no siempre al centro
-      const landing = (360 - (index * seg + seg / 2 + jitter) + 360) % 360;
+      if (!s.wheel.length) s.wheel = R.buildWheel(R.QUESTIONS);   // ruleta agotada: se vuelve a armar
+      const n = s.wheel.length;
+      let index = Math.floor(Math.random() * n);
+      // Solo pruebas: forzar un segmento concreto
+      const forced = R.DEBUG_FORCE_BONUS ? s.wheel.findIndex(function (x) { return x.c === 'BONUS'; })
+        : R.DEBUG_FORCE_QUESTION ? s.wheel.findIndex(function (x) { return x.q === R.DEBUG_FORCE_QUESTION; }) : -1;
+      if (forced >= 0) index = forced;
+      R.DEBUG_FORCE_BONUS = R.DEBUG_FORCE_QUESTION = null;
+
+      const seg = s.wheel[index];
+      const segDeg = 360 / n;
+      const jitter = (Math.random() - 0.5) * segDeg * 0.7;          // aterriza dentro del segmento, no siempre al centro
+      const landing = (360 - (index * segDeg + segDeg / 2 + jitter) + 360) % 360;
       const extraTurns = 5 + Math.floor(Math.random() * 3);
       const rotation = Math.floor(s.wheelRotation / 360) * 360 + extraTurns * 360 + landing;
 
-      s.currentCategory = cats[index].id;
-      s.currentQuestion = pick.question;
+      s.currentCategory = seg.c;
+      s.currentQuestion = seg.c === 'BONUS' ? null : R.QUESTIONS.find(function (q) { return q.id === seg.q; });
       s.spin = { id: Date.now(), categoryIndex: index, rotation: rotation, durationMs: CFG.SPIN_DURATION_MS };
       s.wheelRotation = rotation;
       this.go(P.SPINNING);
@@ -184,40 +192,12 @@
       }, CFG.SPIN_DURATION_MS + 400);
     }
 
-    /* Solo se eligen categorías habilitadas que todavía tienen preguntas sin usar en esta partida:
-       la ruleta nunca cae en un tema vacío y no se repiten preguntas. */
-    pickRound() {
-      const s = this.state;
-      const cats = R.CATEGORIES;
-      const usable = function (q) {
-        const c = cats.find(function (x) { return x.id === q.category; });
-        return !!c && c.enabled;
-      };
-      let pool = R.QUESTIONS.filter(function (q) { return usable(q) && s.usedQuestionIds.indexOf(q.id) === -1; });
-      if (!pool.length) {   // se agotó el banco: empieza de nuevo
-        s.usedQuestionIds = [];
-        pool = R.QUESTIONS.filter(usable);
-      }
-      const random = function (arr) { return arr[Math.floor(Math.random() * arr.length)]; };
-      let q = R.DEBUG_FORCE_QUESTION ? pool.find(function (x) { return x.id === R.DEBUG_FORCE_QUESTION; }) : null;  // solo pruebas
-      R.DEBUG_FORCE_QUESTION = null;
-      if (!q) {
-        const catIds = pool.map(function (x) { return x.category; }).filter(function (c, i, a) { return a.indexOf(c) === i; });
-        const catId = random(catIds);
-        q = random(pool.filter(function (x) { return x.category === catId; }));
-      }
-      s.usedQuestionIds.push(q.id);
-      return { index: cats.findIndex(function (c) { return c.id === q.category; }), question: q };
-    }
-
     showQuestion() {
       const s = this.state;
-      if (s.phase !== P.CATEGORY_SELECTED || !this.go(P.QUESTION_ACTIVE)) return;
+      if (s.phase !== P.CATEGORY_SELECTED || s.currentCategory === 'BONUS' || !this.go(P.QUESTION_ACTIVE)) return;
       s.questionStartedAt = Date.now();
       s.questionDeadline = s.questionStartedAt + CFG.QUESTION_TIME * 1000;
       s.answers = {};
-      s.results = null;
-      s.teams.forEach(function (t) { t.roundPoints = 0; });
       this.publish();
       this.later(this.closeAnswers.bind(this), CFG.QUESTION_TIME * 1000);
       this.scheduleBots();
@@ -227,7 +207,15 @@
       if (this.state.phase !== P.QUESTION_ACTIVE || !this.go(P.ANSWER_LOCKED)) return;
       this.clearTimers();
       this.publish();
-      this.later(this.showResults.bind(this), CFG.RESULTS_DELAY_MS);
+      this.later(this.finishRound.bind(this), CFG.RESULTS_DELAY_MS);
+    }
+
+    /* BONUS: se salta la pregunta y todos los equipos suman BONUS_POINTS. */
+    applyBonus() {
+      const s = this.state;
+      if (s.phase !== P.CATEGORY_SELECTED || s.currentCategory !== 'BONUS') return;
+      s.teams.forEach(function (t) { t.score += CFG.BONUS_POINTS; });
+      this.advance();
     }
 
     /* ---------- Respuestas ---------- */
@@ -261,41 +249,24 @@
       });
     }
 
-    /* ---------- Resultados ---------- */
-    showResults() {
+    /* ---------- Puntos (se guardan en segundo plano; solo se muestran al final) ---------- */
+    finishRound() {
       const s = this.state;
-      if (s.phase !== P.ANSWER_LOCKED || !this.go(P.RESULTS)) return;
+      if (s.phase !== P.ANSWER_LOCKED) return;
       const q = s.currentQuestion;
-      const rows = s.teams.map(function (t) {
+      s.teams.forEach(function (t) {
         const a = s.answers[t.id];
         const isCorrect = !!a && a.index === q.correctAnswer;
-        const points = R.calculateScore(a ? a.responseTime : null, isCorrect);
-        t.roundPoints = points;
-        t.score += points;
-        return {
-          teamId: t.id, name: t.name,
-          answerIndex: a ? a.index : null,
-          responseTime: a ? a.responseTime : null,
-          correct: isCorrect, points: points
-        };
+        t.score += R.calculateScore(a ? a.responseTime : null, isCorrect);
+        if (isCorrect) t.correct += 1;
       });
-      rows.sort(function (a, b) { return b.points - a.points; }); // los empates conservan el orden de registro
-      s.results = {
-        round: s.currentRound,
-        correctAnswer: q.correctAnswer,
-        explanation: q.explanation || null,
-        rows: rows
-      };
-      this.publish();
+      this.advance();
     }
 
-    showLeaderboard() {
-      if (this.go(P.LEADERBOARD)) this.publish();
-    }
-
-    nextRound() {
+    /* Quita de la ruleta el segmento usado y pasa a la siguiente ronda (o termina la partida). */
+    advance() {
       const s = this.state;
-      if (s.phase !== P.LEADERBOARD) return;
+      if (s.spin) s.wheel.splice(s.spin.categoryIndex, 1);
       if (s.currentRound >= s.totalRounds) {
         this.go(P.GAME_OVER);
       } else {
@@ -305,9 +276,7 @@
         s.currentQuestion = null;
         s.spin = null;
         s.answers = {};
-        s.results = null;
         s.questionStartedAt = s.questionDeadline = null;
-        s.teams.forEach(function (t) { t.roundPoints = 0; });
         this.go(P.WAITING);
       }
       this.publish();
