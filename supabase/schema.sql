@@ -34,7 +34,7 @@ create table if not exists public.rooms (
                                      'ANSWER_LOCKED','RESULTS','LEADERBOARD','GAME_OVER')),
   current_round     int  not null default 1,
   total_rounds      int  not null default 10,
-  question_seconds  int  not null default 15,
+  question_seconds  int  not null default 10,
   wheel_rotation    double precision not null default 0,
   spin              jsonb,
   spin_started_at   timestamptz,
@@ -48,7 +48,7 @@ create table if not exists public.rooms (
 );
 
 -- Datos internos de la sala que ningún cliente puede leer.
-alter table public.rooms alter column question_seconds set default 15;
+alter table public.rooms alter column question_seconds set default 10;
 
 create table if not exists public.room_private (
   room_code           text primary key references public.rooms(code) on delete cascade,
@@ -160,7 +160,7 @@ returns bigint language sql stable security definer set search_path = public as 
   select (extract(epoch from clock_timestamp()) * 1000)::bigint;
 $$;
 
-create or replace function public.create_room(p_total_rounds int default 10, p_question_seconds int default 15)
+create or replace function public.create_room(p_total_rounds int default 10, p_question_seconds int default 10)
 returns text language plpgsql security definer set search_path = public as $$
 declare
   v_alpha constant text := '23456789ABCDEFGHJKMNPQRSTUVWXYZ';  -- sin 0/O/1/I

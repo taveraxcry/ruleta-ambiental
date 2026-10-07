@@ -427,6 +427,7 @@
     if (s.phase === P.QUESTION_ACTIVE && s.questionDeadline) remaining = Math.max(0, (s.questionDeadline - nowMs()) / 1000);
     const total = s.questionStartedAt && s.questionDeadline ? (s.questionDeadline - s.questionStartedAt) / 1000 : CFG.QUESTION_TIME;
     const frac = Math.max(0, Math.min(1, remaining / total));
+    const warnAt = total / 2, dangerAt = Math.max(2, total / 4);
     const shown = Math.ceil(remaining);
     if (shown !== lastTimerNum) { num.textContent = shown; lastTimerNum = shown; }
     ring.style.strokeDasharray = RING_LEN;
@@ -434,19 +435,19 @@
     const prog = $('q-progress');
     if (prog) {
       prog.style.transform = 'scaleX(' + frac + ')';
-      prog.classList.toggle('warn', remaining <= 10 && remaining > 5);
-      prog.classList.toggle('danger', remaining <= 5);
+      prog.classList.toggle('warn', remaining <= warnAt && remaining > dangerAt);
+      prog.classList.toggle('danger', remaining <= dangerAt);
     }
     const timer = $('timer');
-    timer.classList.toggle('warn', remaining <= 10 && remaining > 5);
-    timer.classList.toggle('danger', remaining <= 5 && remaining > 0);
+    timer.classList.toggle('warn', remaining <= warnAt && remaining > dangerAt);
+    timer.classList.toggle('danger', remaining <= dangerAt && remaining > 0);
     // Si el teléfono hizo scroll y el reloj de la tarjeta no se ve, se muestra en el encabezado
     const off = s.phase === P.QUESTION_ACTIVE && timer.getBoundingClientRect().bottom < $('screen-game').querySelector('.game-header').getBoundingClientRect().bottom;
     document.body.classList.toggle('timer-off', off);
     if (off) {
       $('g-timer-num').textContent = shown + ' s';
-      $('g-timer').classList.toggle('warn', remaining <= 10 && remaining > 5);
-      $('g-timer').classList.toggle('danger', remaining <= 5);
+      $('g-timer').classList.toggle('warn', remaining <= warnAt && remaining > dangerAt);
+      $('g-timer').classList.toggle('danger', remaining <= dangerAt);
     }
     if (s.phase === P.QUESTION_ACTIVE && remaining <= 0) {   // al llegar a 0 la pregunta se bloquea sin esperar al servidor
       document.querySelectorAll('#stage-question .option.is-live').forEach(function (b) { b.disabled = true; b.classList.remove('is-live'); b.classList.add('is-dimmed'); });

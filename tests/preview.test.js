@@ -103,7 +103,7 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
   await P.locator('button.option[data-index="3"]').click({ force: true, timeout: 1500 }).catch(() => {});
   check(await P.locator('button.option.is-selected').count() === 1, 'no se puede cambiar ni enviar otra respuesta');
   check(!/correcta|incorrecta/i.test(await P.locator('#stage-question').innerText()), 'no se revela la respuesta correcta');
-  check(tA >= 13 && tA <= 15, 'el temporizador arranca en 15 s (' + tA + ')');
+  check(tA >= 8 && tA <= 10, 'el temporizador arranca en 10 s (' + tA + ')');
   const d1 = await R(() => document.getElementById('timer-ring').style.strokeDashoffset);
   await P.waitForTimeout(1600);
   check(Number(await P.locator('#timer-num').innerText()) < tA && d1 !== await R(() => document.getElementById('timer-ring').style.strokeDashoffset), 'cuenta hacia atrás con anillo progresivo');
@@ -138,7 +138,7 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
   check(q3 && q3.category === (await st()).cat, 'ronda 3: pregunta al azar, de la categoría del segmento (' + q3.category + ')');
   const sc0 = (await st()).teams[0].score;
   await P.waitForSelector('.answer-status.late', { timeout: 30000 });
-  check(/Tiempo agotado · sin respuesta/.test(await P.locator('.answer-status.late').innerText()), 'al acabar los 15 s sin responder: "Tiempo agotado · sin respuesta"');
+  check(/Tiempo agotado · sin respuesta/.test(await P.locator('.answer-status.late').innerText()), 'al acabar los 10 s sin responder: "Tiempo agotado · sin respuesta"');
   await backToWheel();
   check((await st()).teams[0].score === sc0, 'sin respuesta = 0 puntos');
 

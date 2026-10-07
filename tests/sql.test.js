@@ -46,7 +46,7 @@ async function rejects(promise, re, label) {
 
   console.log('\nSala y equipos');
   await test('el anfitrión crea una sala con código ECO-XXX y una ruleta de 20 segmentos (uno por pregunta)', async () => {
-    code = await rpc(host, 'create_room', 4, 15);
+    code = await rpc(host, 'create_room', 4, 10);
     assert.match(code, /^ECO-[2-9A-HJKMNP-Z]{3}$/);
     const r = await room(host, code), p = await priv(code);
     assert.strictEqual(r.wheel.length, 20);
@@ -164,7 +164,7 @@ async function rejects(promise, re, label) {
     assert.ok(!/"correct(_answer|Answer)"/.test(JSON.stringify(a)), 'la sala filtra la respuesta correcta');
     question = a;
     assert.strictEqual(question.question.id, 7);
-    assert.strictEqual(new Date(a.question_deadline) - new Date(a.question_started_at), 15000, 'la pregunta dura 15 s');
+    assert.strictEqual(new Date(a.question_deadline) - new Date(a.question_started_at), 10000, 'la pregunta dura 10 s');
   });
   const correctOf = async (id) => (await db.admin.query('select correct_answer c from public.questions where id=$1', [id])).rows[0].c;
   await test('respuestas: A correcta rápido, B incorrecta, C sin responder', async () => {
