@@ -5,7 +5,7 @@
 (function (R) {
   'use strict';
   R.SUPABASE = {
-    url: '',      // Ej: https://abcdefghijk.supabase.co
-    anonKey: ''   // Settings → API → "anon public"
+    url: 'https://qdljwfsnohqgpogvndgx.supabase.co',
+    anonKey: 'sb_publishable_hpTeG02PykBV3JHkuJImaA_8GsC0zX_'   // clave pública (publishable): segura en el navegador
   };
 })(window.Ruleta = window.Ruleta || {});
