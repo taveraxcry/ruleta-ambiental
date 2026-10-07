@@ -10,7 +10,7 @@ Concurso educativo multijugador sobre gestión ambiental y logística reversa. H
 ## Cómo se juega
 
 1. El anfitrión gira la ruleta. Cada segmento es **una pregunta**, con el color de su tema.
-2. Si sale una pregunta, todos los equipos la reciben a la vez y tienen **20 s**. Una sola respuesta por equipo.
+2. Si sale una pregunta, todos los equipos la reciben a la vez y tienen **15 s**. Una sola respuesta por equipo.
 3. Al cerrar, **no se muestran resultados**: se vuelve directo a la ruleta. Los puntos se guardan en segundo plano.
 4. Cada segmento usado **desaparece** al empezar la ronda siguiente: la ruleta conserva su tamaño pero tiene cada vez menos opciones (20 al inicio, 10 al final). Un tema con dos preguntas tiene dos segmentos: sale uno y el otro sigue.
 5. Tras la ronda 10 se revela la **clasificación final** con puntos y aciertos de cada equipo.

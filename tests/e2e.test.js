@@ -139,9 +139,9 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
     const qCat = (await bridge.db.admin.query('select category from public.questions where id=$1', [row.question.id])).rows[0].category;
     check(allEqual(cats2) && qCat === row.current_category, 'la pregunta pertenece a la categoría del segmento (' + qCat + ')');
     const startedAt = Date.parse(row.question_started_at);
-    check(Date.parse(row.question_deadline) - startedAt === 20000, 'el servidor fijó 20 segundos de ventana');
+    check(Date.parse(row.question_deadline) - startedAt === 15000, 'el servidor fijó 15 segundos de ventana');
     const timers = (await everyone((p) => text(p, '#timer-num'))).map(Number);
-    check(Math.max(...timers) - Math.min(...timers) <= 1 && timers[0] >= 18, 'todos tienen el mismo cronómetro: ' + timers.join(', '));
+    check(Math.max(...timers) - Math.min(...timers) <= 1 && timers[0] >= 13 && timers[0] <= 15, 'todos tienen el mismo cronómetro: ' + timers.join(', '));
     check(!/correct_answer|correctAnswer/.test(await teams[0].content()), 'la respuesta correcta no está en el HTML del equipo');
     check(await teams[0].evaluate(() => !window.Ruleta.QUESTIONS), 'el teléfono del equipo nunca descarga el banco de preguntas con respuestas');
 
@@ -217,7 +217,7 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   await bridge.db.admin.query('update public.rooms set total_rounds = 3 where code=$1', [code]);
   await playQuestionRound(1, {
     checkLocks: true, reloadB: true, manualClose: false,
-    answers: [{ page: A, at: 100, option: 'ok' }, { page: B, at: 600, option: 'wrong' }]   // C no responde → se cierra solo a los 20 s
+    answers: [{ page: A, at: 100, option: 'ok' }, { page: B, at: 600, option: 'wrong' }]   // C no responde → se cierra solo a los 15 s
   });
   let sc = await dbScores();
   check(sc['Eco Team'].score === 100 && sc['Los Verdes'].score === 0 && sc['Guardianes'].score === 0,

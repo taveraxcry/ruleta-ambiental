@@ -5,7 +5,7 @@
   R.CONFIG = {
     TOTAL_ROUNDS: 10,          // Rondas por partida real (se usan 10 de las 20 preguntas, sin repetir)
     PREVIEW_ROUNDS: 5,         // Rondas del modo PREVIEW / DEMO
-    QUESTION_TIME: 20,         // Segundos por pregunta
+    QUESTION_TIME: 15,         // Segundos por pregunta (el servidor recibe este valor al crear la sala)
     SPIN_DURATION_MS: 7000,    // Duración del giro (debe coincidir con spin() en supabase/schema.sql)
     RESULTS_DELAY_MS: 2200,    // Pausa con "Respuestas cerradas" antes de volver a la ruleta
     MAX_TEAM_NAME: 20,

@@ -54,7 +54,10 @@ function html(wheelSrc) {
     const k = wheel.filter((s) => s.c === c.id).length;
     return `<li><span class="dot" style="background:${c.color}"></span><b>${esc(c.name)}</b><span>${esc(c.topic)}</span><em>${k} ${k === 1 ? 'pregunta' : 'preguntas'}</em></li>`;
   }).join('');
-  const scoreRows = R.SCORE_TABLE.map((b, i) => `<tr><td>${i === 0 ? '0' : R.SCORE_TABLE[i - 1].maxSeconds + 1}–${b.maxSeconds} s</td><td>${b.points}</td></tr>`).join('');
+  const QT = R.CONFIG.QUESTION_TIME;
+  const bands = R.SCORE_TABLE.filter((b, i) => (i === 0 ? 0 : R.SCORE_TABLE[i - 1].maxSeconds + 1) <= QT);
+  const lastPoints = bands[bands.length - 1].points;
+  const scoreRows = bands.map((b, i) => `<tr><td>${i === 0 ? '0' : R.SCORE_TABLE[i - 1].maxSeconds + 1}–${b.maxSeconds} s</td><td>${b.points}</td></tr>`).join('');
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -119,7 +122,7 @@ function html(wheelSrc) {
   <span class="kicker">🌎 Guion de presentación</span>
   <h1>RULETA <span>AMBIENTAL</span></h1>
   <div class="sub">Gestión Ambiental y Logística Reversa</div>
-  <div class="meta"><span class="pill">⏱ 8 a 10 minutos</span><span class="pill">10 rondas · 20 s por pregunta</span><span class="pill">20 preguntas en la ruleta</span><span class="pill">Un equipo = un teléfono</span></div>
+  <div class="meta"><span class="pill">⏱ 8 a 10 minutos</span><span class="pill">10 rondas · ${R.CONFIG.QUESTION_TIME} s por pregunta</span><span class="pill">20 preguntas en la ruleta</span><span class="pill">Un equipo = un teléfono</span></div>
   <img class="wheel" src="${wheelSrc}" alt="La ruleta">
   <div class="foot">taveraxcry.github.io/ruleta-ambiental</div>
 </section>
@@ -139,14 +142,14 @@ function html(wheelSrc) {
 <li>Un equipo = un teléfono. Si alguien recarga la página por error, vuelve a su equipo sin perder nada.</li></ul></div>
 
 <div class="block"><h3><span class="n">3</span> Cómo es una ronda <span class="t">2 MIN</span></h3>
-<p class="say">“Giramos la ruleta. Donde se detenga la aguja, esa es la pregunta. Tienen 20 segundos y una sola oportunidad: cuando tocan una respuesta, queda bloqueada. Al cerrar, volvemos directo a la ruleta.”</p>
+<p class="say">“Giramos la ruleta. Donde se detenga la aguja, esa es la pregunta. Tienen ${R.CONFIG.QUESTION_TIME} segundos y una sola oportunidad: cuando tocan una respuesta, queda bloqueada. Al cerrar, volvemos directo a la ruleta.”</p>
 <ul><li><b>Girar</b> → la aguja marca un segmento: una pregunta, con el color de su tema.</li>
-<li><b>Pregunta</b> → aparece en todos los teléfonos a la vez, con un reloj de 20 segundos.</li>
+<li><b>Pregunta</b> → aparece en todos los teléfonos a la vez, con un reloj de ${R.CONFIG.QUESTION_TIME} segundos.</li>
 <li><b>Responder</b> → un toque. Sale “Respuesta registrada” y ya no se puede cambiar.</li>
-<li><b>Cierre</b> → a los 20 s (o cuando el docente cierra) se vuelve a la ruleta. Nadie ve quién respondió primero.</li></ul></div>
+<li><b>Cierre</b> → a los ${R.CONFIG.QUESTION_TIME} s (o cuando el docente cierra) se vuelve a la ruleta. Nadie ve quién respondió primero.</li></ul></div>
 
 <div class="block"><h3><span class="n">4</span> Cómo se gana <span class="t">1,5 MIN</span></h3>
-<p class="say">“No basta con acertar: también cuenta la velocidad. Una respuesta correcta en los primeros 2 segundos vale 100 puntos; al final del tiempo vale 20. Si se equivocan o no responden, 0. Y los puntos no se muestran hasta el final: la sorpresa queda para el cierre.”</p>
+<p class="say">“No basta con acertar: también cuenta la velocidad. Una respuesta correcta en los primeros 2 segundos vale 100 puntos; al final del tiempo vale ${lastPoints}. Si se equivocan o no responden, 0. Y los puntos no se muestran hasta el final: la sorpresa queda para el cierre.”</p>
 <div class="grid2"><table class="score">${scoreRows}<tr class="zero"><td>Incorrecta</td><td>0</td></tr><tr class="zero"><td>Sin respuesta</td><td>0</td></tr></table>
 <div><ul style="margin:0"><li>El tiempo lo mide el servidor, no el teléfono: nadie gana por tener un reloj adelantado.</li>
 <li>Al final se revela la clasificación: puntos y aciertos de cada equipo.</li></ul></div></div></div>
