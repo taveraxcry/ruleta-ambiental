@@ -19,7 +19,7 @@
     });
   };
   const icon = function (id, cls) { return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' aria-hidden="true"><use href="#' + id + '"/></svg>'; };
-  const catById = function (id) { return id === 'BONUS' ? R.BONUS : R.CATEGORIES.find(function (c) { return c.id === id; }) || { id: id, name: id, color: '#4caf50', topic: '' }; };
+  const catById = function (id) { return R.CATEGORIES.find(function (c) { return c.id === id; }) || { id: id, name: id, color: '#4caf50', topic: '' }; };
 
   const transport = new R.LocalTransport(CFG.CHANNEL_NAME);
   const app = { role: null, host: null, client: null, state: null, wheel: null, questionKey: '', revealKey: '', lastStage: '', sb: false };
@@ -223,9 +223,7 @@
     } else if (s.phase === P.SPINNING || (s.phase === P.CATEGORY_SELECTED && !landed)) {
       status.innerHTML = '<span class="spin-label">GIRANDO…</span>';
     } else {
-      status.innerHTML = s.currentCategory === 'BONUS'
-        ? (isHostView() ? '¡BONUS! Pulsa <b>Aplicar bonus</b> para sumar los puntos y seguir.' : '¡BONUS! Esta ronda no hay pregunta.')
-        : (isHostView() ? 'Tema listo. Muestra la pregunta cuando todos estén atentos.' : 'Prepárate: la pregunta aparecerá en un momento.');
+      status.innerHTML = isHostView() ? 'Tema listo. Muestra la pregunta cuando todos estén atentos.' : 'Prepárate: la pregunta aparecerá en un momento.';
     }
     if (!landed) {
       reveal.classList.add('hidden');
@@ -237,15 +235,10 @@
     const key = s.currentRound + '|' + cat.id;
     if (key !== app.revealKey) {
       app.revealKey = key;
-      const bonus = cat.id === 'BONUS';
-      reveal.classList.toggle('bonus', bonus);
       reveal.style.setProperty('--cat', cat.color);
-      reveal.innerHTML = bonus
-        ? '<span class="eyebrow">¡SALIÓ BONUS!</span><span class="cat-name">★ +' + CFG.BONUS_POINTS + ' PUNTOS</span>' +
-          '<span class="cat-topic">Se salta la pregunta y todos los equipos suman ' + CFG.BONUS_POINTS + ' puntos.</span>'
-        : '<span class="eyebrow">CATEGORÍA SELECCIONADA</span>' +
-          '<span class="cat-name">' + esc(cat.name) + '</span>' +
-          '<span class="cat-topic">' + esc(cat.topic) + '</span>';
+      reveal.innerHTML = '<span class="eyebrow">CATEGORÍA SELECCIONADA</span>' +
+        '<span class="cat-name">' + esc(cat.name) + '</span>' +
+        '<span class="cat-topic">' + esc(cat.topic) + '</span>';
       reveal.classList.remove('hidden');
       $('stage-wheel').classList.add('has-reveal');
       fitText(reveal.querySelector('.cat-name'));
@@ -404,9 +397,7 @@
         case P.SPINNING: html = '<button class="btn btn-ghost btn-xl" disabled>GIRANDO…</button>'; break;
         case P.CATEGORY_SELECTED:
           html = app.wheel.anim ? '<button class="btn btn-ghost btn-xl" disabled>GIRANDO…</button>'
-            : s.currentCategory === 'BONUS'
-              ? '<button class="btn btn-primary btn-xl" data-action="bonus">★ APLICAR BONUS Y SEGUIR</button>'
-              : '<button class="btn btn-primary btn-xl" data-action="show">MOSTRAR PREGUNTA</button>';
+            : '<button class="btn btn-primary btn-xl" data-action="show">MOSTRAR PREGUNTA</button>';
           break;
         case P.QUESTION_ACTIVE: html = '<button class="btn btn-warn btn-xl" data-action="close">CERRAR RESPUESTAS</button>'; break;
         case P.ANSWER_LOCKED:
@@ -650,7 +641,6 @@
         case 'spin': R.Sound.unlock(); b.disabled = true; h.spin(); break;   // el sonido nace del clic en GIRAR
         case 'show': b.disabled = true; h.showQuestion(); break;
         case 'close': b.disabled = true; h.closeAnswers(); break;
-        case 'bonus': b.disabled = true; h.applyBonus(); break;
         case 'restart':
           if (app.role === 'preview') location.reload(); else leave();
           break;

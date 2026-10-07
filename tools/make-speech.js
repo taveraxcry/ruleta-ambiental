@@ -15,7 +15,7 @@ const CHROME = process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Applic
 const OUT = path.join(ROOT, 'speech', 'Ruleta-Ambiental-Guion.pdf');
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const cat = (id) => (id === 'BONUS' ? R.BONUS : R.CATEGORIES.find((c) => c.id === id));
+const cat = (id) => R.CATEGORIES.find((c) => c.id === id);
 const TYPE = R.QUESTION_TYPES;
 const tag = (q, i) => (q.type === 'true_false' ? (i === 0 ? 'V' : 'F') : 'ABCD'[i]);
 
@@ -39,10 +39,6 @@ function questionsHtml() {
   return wheel.map((seg, i) => {
     const c = cat(seg.c);
     const n = String(i + 1).padStart(2, '0');
-    if (seg.c === 'BONUS') {
-      return `<article class="q bonus"><div class="q-head"><span class="seg">${n}</span><span class="chip" style="--c:${c.color}">★ BONUS</span></div>
-        <p class="q-text">Se salta la pregunta: <b>todos los equipos suman ${R.CONFIG.BONUS_POINTS} puntos</b>. El segmento desaparece de la ruleta.</p></article>`;
-    }
     const q = R.QUESTIONS.find((x) => x.id === seg.q);
     const opts = q.options.map((o, k) => `<li class="${k === q.correctAnswer ? 'ok' : ''}"><span class="l">${tag(q, k)}</span><span>${esc(o)}</span>${k === q.correctAnswer ? '<span class="mark">✓ Correcta</span>' : ''}</li>`).join('');
     return `<article class="q"><div class="q-head"><span class="seg">${n}</span><span class="chip" style="--c:${c.color}">${esc(c.name)}</span>
@@ -57,7 +53,7 @@ function html(wheelSrc) {
   const legend = cats.map((c) => {
     const k = wheel.filter((s) => s.c === c.id).length;
     return `<li><span class="dot" style="background:${c.color}"></span><b>${esc(c.name)}</b><span>${esc(c.topic)}</span><em>${k} ${k === 1 ? 'pregunta' : 'preguntas'}</em></li>`;
-  }).join('') + `<li><span class="dot" style="background:${R.BONUS.color}"></span><b>BONUS</b><span>+${R.CONFIG.BONUS_POINTS} puntos para todos, se salta la pregunta</span><em>3 segmentos</em></li>`;
+  }).join('');
   const scoreRows = R.SCORE_TABLE.map((b, i) => `<tr><td>${i === 0 ? '0' : R.SCORE_TABLE[i - 1].maxSeconds + 1}–${b.maxSeconds} s</td><td>${b.points}</td></tr>`).join('');
 
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
@@ -102,7 +98,6 @@ function html(wheelSrc) {
   .wheel-row { display: grid; grid-template-columns: 64mm 1fr; gap: 18px; align-items: center; margin-bottom: 14px; }
   .wheel-row img { width: 64mm; filter: drop-shadow(0 6px 12px rgba(0,0,0,.15)); }
   .q { break-inside: avoid; margin: 0 0 10px; padding: 11px 14px; border: 1px solid #e4eedd; border-radius: 12px; }
-  .q.bonus { background: #fff8e6; border-color: #f1d58a; }
   .q-head { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
   .seg { font-size: 8.5pt; font-weight: 800; color: #fff; background: #1d2b29; border-radius: 6px; padding: 2px 7px; }
   .chip { font-size: 8.5pt; font-weight: 800; letter-spacing: .06em; padding: 2px 9px 2px 8px; border-radius: 999px; color: #1d2b29; background: color-mix(in srgb, var(--c) 18%, white); border: 1px solid color-mix(in srgb, var(--c) 55%, white); }
@@ -124,7 +119,7 @@ function html(wheelSrc) {
   <span class="kicker">🌎 Guion de presentación</span>
   <h1>RULETA <span>AMBIENTAL</span></h1>
   <div class="sub">Gestión Ambiental y Logística Reversa</div>
-  <div class="meta"><span class="pill">⏱ 8 a 10 minutos</span><span class="pill">10 rondas · 20 s por pregunta</span><span class="pill">20 preguntas + 3 BONUS</span><span class="pill">Un equipo = un teléfono</span></div>
+  <div class="meta"><span class="pill">⏱ 8 a 10 minutos</span><span class="pill">10 rondas · 20 s por pregunta</span><span class="pill">20 preguntas en la ruleta</span><span class="pill">Un equipo = un teléfono</span></div>
   <img class="wheel" src="${wheelSrc}" alt="La ruleta">
   <div class="foot">taveraxcry.github.io/ruleta-ambiental</div>
 </section>
@@ -145,7 +140,7 @@ function html(wheelSrc) {
 
 <div class="block"><h3><span class="n">3</span> Cómo es una ronda <span class="t">2 MIN</span></h3>
 <p class="say">“Giramos la ruleta. Donde se detenga la aguja, esa es la pregunta. Tienen 20 segundos y una sola oportunidad: cuando tocan una respuesta, queda bloqueada. Al cerrar, volvemos directo a la ruleta.”</p>
-<ul><li><b>Girar</b> → la aguja marca un segmento: un tema (con su color) o un <b>BONUS</b>.</li>
+<ul><li><b>Girar</b> → la aguja marca un segmento: una pregunta, con el color de su tema.</li>
 <li><b>Pregunta</b> → aparece en todos los teléfonos a la vez, con un reloj de 20 segundos.</li>
 <li><b>Responder</b> → un toque. Sale “Respuesta registrada” y ya no se puede cambiar.</li>
 <li><b>Cierre</b> → a los 20 s (o cuando el docente cierra) se vuelve a la ruleta. Nadie ve quién respondió primero.</li></ul></div>
@@ -153,13 +148,12 @@ function html(wheelSrc) {
 <div class="block"><h3><span class="n">4</span> Cómo se gana <span class="t">1,5 MIN</span></h3>
 <p class="say">“No basta con acertar: también cuenta la velocidad. Una respuesta correcta en los primeros 2 segundos vale 100 puntos; al final del tiempo vale 20. Si se equivocan o no responden, 0. Y los puntos no se muestran hasta el final: la sorpresa queda para el cierre.”</p>
 <div class="grid2"><table class="score">${scoreRows}<tr class="zero"><td>Incorrecta</td><td>0</td></tr><tr class="zero"><td>Sin respuesta</td><td>0</td></tr></table>
-<div><ul style="margin:0"><li><b>BONUS:</b> se salta la pregunta y <b>todos</b> suman ${R.CONFIG.BONUS_POINTS} puntos.</li>
-<li>El tiempo lo mide el servidor, no el teléfono: nadie gana por tener un reloj adelantado.</li>
+<div><ul style="margin:0"><li>El tiempo lo mide el servidor, no el teléfono: nadie gana por tener un reloj adelantado.</li>
 <li>Al final se revela la clasificación: puntos y aciertos de cada equipo.</li></ul></div></div></div>
 
 <div class="block"><h3><span class="n">5</span> La ruleta <span class="t">1 MIN</span></h3>
-<p class="say">“Cada segmento es una pregunta, y cada pregunta que sale desaparece. La ruleta no se achica: va teniendo menos opciones. Empieza con 23 segmentos: 20 preguntas y 3 BONUS.”</p>
-<ul><li>Los colores identifican el tema. Los BONUS son dorados.</li>
+<p class="say">“Cada segmento es una pregunta, y cada pregunta que sale desaparece. La ruleta no se achica: va teniendo menos opciones. Empieza con 20 segmentos, uno por pregunta, y en cada ronda desaparece el que salió.”</p>
+<ul><li>Los colores identifican el tema. Si un tema tiene dos preguntas, tiene dos segmentos.</li>
 <li>Ninguna pregunta se repite en la misma partida.</li></ul></div>
 
 <div class="block"><h3><span class="n">6</span> Lo que no se ve <span class="t">1 MIN</span></h3>
@@ -176,7 +170,6 @@ function html(wheelSrc) {
 <div class="wheel-row"><img src="${wheelSrc}" alt="Ruleta"><ul class="legend">${legend}</ul></div>
 <div class="block"><h3>Clave rápida de respuestas</h3>
 <ul class="key">${wheel.map((s, i) => {
-    if (s.c === 'BONUS') return `<li><b>${String(i + 1).padStart(2, '0')}</b>BONUS · +${R.CONFIG.BONUS_POINTS} a todos</li>`;
     const q = R.QUESTIONS.find((x) => x.id === s.q);
     return `<li><b>${String(i + 1).padStart(2, '0')}</b>${esc(cat(s.c).name)} · P${q.id} → <b style="width:auto">${tag(q, q.correctAnswer)}</b></li>`;
   }).join('')}</ul></div>

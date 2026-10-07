@@ -1,5 +1,5 @@
 /* Ruleta tipo mesa de casino, dibujada en canvas de alta resolución y animada con requestAnimationFrame.
-   - Los segmentos vienen del estado (state.wheel): uno por pregunta que queda + los BONUS. Cada segmento
+   - Los segmentos vienen del estado (state.wheel): uno por pregunta que queda. Cada segmento
      usado desaparece, así la ruleta mantiene su tamaño pero tiene cada vez menos opciones.
    - El progreso del giro se calcula con la HORA DEL ANFITRIÓN/SERVIDOR (spin.id = inicio del giro):
      todos los dispositivos ven la ruleta en la misma posición en el mismo instante.
@@ -45,7 +45,6 @@
   }
 
   function segInfo(seg) {
-    if (seg.c === 'BONUS') return R.BONUS;
     return R.CATEGORIES.find(function (c) { return c.id === seg.c; }) || { id: seg.c, name: seg.c, color: '#4caf50' };
   }
 
@@ -144,19 +143,14 @@
     // Segmentos
     segs.forEach(function (sg, i) {
       const info = segInfo(sg);
-      const bonus = sg.c === 'BONUS';
       const a0 = start + i * seg, a1 = a0 + seg;
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, Rs, a0, a1); ctx.closePath();
       const lg = ctx.createRadialGradient(cx, cy, Ri, cx, cy, Rs);
-      if (bonus) {
-        lg.addColorStop(0, '#8a5a06'); lg.addColorStop(0.5, '#d9a21b'); lg.addColorStop(0.85, '#f6d36b'); lg.addColorStop(1, '#ffe7a3');
-      } else {
-        lg.addColorStop(0, shade(info.color, -0.2)); lg.addColorStop(0.6, info.color); lg.addColorStop(1, shade(info.color, 0.1));
-      }
+      lg.addColorStop(0, shade(info.color, -0.2)); lg.addColorStop(0.6, info.color); lg.addColorStop(1, shade(info.color, 0.1));
       ctx.fillStyle = lg; ctx.fill();
       // Banda exterior (bolsillo) ligeramente más clara
       ctx.beginPath(); ctx.arc(cx, cy, Rs, a0, a1); ctx.arc(cx, cy, Rp, a1, a0, true); ctx.closePath();
-      ctx.fillStyle = bonus ? 'rgba(255,245,210,.22)' : 'rgba(255,255,255,.09)'; ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.09)'; ctx.fill();
     });
     // Línea que separa la banda exterior
     ctx.beginPath(); ctx.arc(cx, cy, Rp, 0, TAU); ctx.lineWidth = r * 0.004; ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.stroke();
@@ -207,7 +201,7 @@
 
     // Etiquetas radiales con UN SOLO tamaño: el mayor con el que todos los nombres caben completos
     const xEnd = Rs - r * 0.055;
-    const labelOf = function (sg) { return sg.c === 'BONUS' ? '★ BONUS' : segInfo(sg).name; };
+    const labelOf = function (sg) { return segInfo(sg).name; };
     const font = function (sz) { ctx.font = '700 ' + sz + 'px Montserrat, system-ui, sans-serif'; if ('letterSpacing' in ctx) ctx.letterSpacing = (sz * 0.05) + 'px'; };
     const fits = function (label, sz) {
       font(sz);
@@ -218,7 +212,6 @@
     const labels = segs.map(labelOf).filter(function (l, i, a) { return a.indexOf(l) === i; });
     while (size > r * 0.025 && !labels.every(function (l) { return fits(l, size); })) size *= 0.97;
     segs.forEach(function (sg, i) {
-      const bonus = sg.c === 'BONUS';
       const mid = start + i * seg + seg / 2;
       ctx.save();
       ctx.translate(cx, cy);
@@ -228,19 +221,14 @@
       font(size);
       ctx.lineJoin = 'round';
       ctx.lineWidth = Math.max(1, size * 0.11);
-      ctx.strokeStyle = bonus ? 'rgba(255,245,215,.55)' : 'rgba(0,0,0,.28)';   // contorno suave: nitidez sobre cualquier color
-      ctx.shadowColor = bonus ? 'rgba(255,240,200,.4)' : 'rgba(0,0,0,.45)';
+      ctx.strokeStyle = 'rgba(0,0,0,.28)';   // contorno suave: nitidez sobre cualquier color
+      ctx.shadowColor = 'rgba(0,0,0,.45)';
       ctx.shadowBlur = r * 0.008; ctx.shadowOffsetY = r * 0.0025;
-      ctx.fillStyle = bonus ? '#3b2400' : '#ffffff';
-      const y = bonus ? -size * 0.34 : 0;
+      ctx.fillStyle = '#ffffff';
+      const y = 0;
       ctx.strokeText(labelOf(sg), xEnd, y);
       ctx.shadowColor = 'transparent';
       ctx.fillText(labelOf(sg), xEnd, y);
-      if (bonus) {
-        const s2 = size * 0.6;
-        ctx.font = '800 ' + s2 + 'px Montserrat, system-ui, sans-serif';
-        ctx.fillText('+' + R.CONFIG.BONUS_POINTS + ' PTS', xEnd, size * 0.64);
-      }
       ctx.restore();
     });
   };
@@ -270,7 +258,6 @@
     if (!this.anim && state.wheel) this.setSegments(state.wheel);
     this.wrap.classList.toggle('landed', state.phase === 'CATEGORY_SELECTED' && !this.anim);
     this.wrap.classList.toggle('spinning', !!this.anim);
-    this.wrap.classList.toggle('is-bonus', state.phase === 'CATEGORY_SELECTED' && state.currentCategory === 'BONUS');
     if (state.phase === 'CATEGORY_SELECTED' && !this.anim) this.alignHighlight(spin);
     if (state.phase === 'SPINNING' && spin && spin.id !== this.appliedSpinId) {
       this.appliedSpinId = spin.id;

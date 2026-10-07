@@ -53,7 +53,7 @@ const check = (c, m) => { if (c) { ok++; } else { bad++; console.log('  ✗', m)
   host.addTeam('nada', 'Equipo Sin Respuesta', false);
   host.startGame();
   const wheel0 = host.state.wheel.length;
-  check(wheel0 === 23, 'la ruleta empieza con 23 segmentos (20 preguntas + 3 BONUS)');
+  check(wheel0 === 20, 'la ruleta empieza con 20 segmentos (uno por pregunta, sin BONUS)');
   const lines = [];
   for (const q of R.QUESTIONS.slice().sort((a, b) => a.id - b.id)) {
     const before = { ok: host.findTeam('ok').score, no: host.findTeam('no').score, nada: host.findTeam('nada').score };
@@ -75,23 +75,31 @@ const check = (c, m) => { if (c) { ok++; } else { bad++; console.log('  ✗', m)
     const fine = d.ok === 100 && d.no === 0 && d.nada === 0;
     lines.push((fine ? '✓ ' : '✗ ') + String(q.id).padStart(2) + ' ' + q.category.padEnd(11) + ' ' + OFFICIAL[q.id][2] + ' → correcta +' + d.ok + ', incorrecta +' + d.no + ', sin responder +' + d.nada);
   }
-  console.log(lines.map((l) => '  ✓ ' + l).join('\n'));
+  console.log(lines.map((l) => '  ' + l).join('\n'));
   check(host.findTeam('ok').correct === 20 && host.findTeam('no').correct === 0, 'aciertos: 20 y 0');
-  check(host.state.wheel.length === 3 && host.state.wheel.every((s) => s.c === 'BONUS'), 'tras las 20 preguntas solo quedan los 3 BONUS');
+  check(host.state.wheel.length === 0, 'tras las 20 preguntas la ruleta queda vacía: cada una salió una sola vez');
 
-  console.log('\nBONUS');
-  for (let i = 0; i < 3; i++) {
-    const before = host.findTeam('nada').score;
-    host.spin(); await sleep(450);
-    check(host.state.currentCategory === 'BONUS', 'sale BONUS');
-    host.showQuestion();
-    check(host.state.phase === 'CATEGORY_SELECTED', 'un BONUS no muestra pregunta');
-    host.applyBonus();
-    check(host.findTeam('nada').score - before === 5, 'BONUS suma 5 a todos');
+  console.log('\nPartida de 10 rondas al azar (como en clase)');
+  const g = new R.HostGame({ send() {}, on() {} }, 10);
+  g.addTeam('x', 'Equipo X', false);
+  g.startGame();
+  const seen = [];
+  let okRounds = 0;
+  for (let r = 1; r <= 10; r++) {
+    const before = g.state.wheel.map((x) => x.c + '#' + x.q);
+    g.spin(); await sleep(450);
+    const idx = g.state.spin.categoryIndex, landed = before[idx];
+    const sameCat = g.state.currentCategory === landed.split('#')[0] && g.state.currentQuestion.id === Number(landed.split('#')[1]);
+    seen.push(g.state.currentQuestion.id);
+    g.showQuestion(); g.closeAnswers(); await sleep(30);
+    const after = g.state.wheel.map((x) => x.c + '#' + x.q);
+    const exact = JSON.stringify(after) === JSON.stringify(before.filter((_, i) => i !== idx));
+    check(sameCat && exact, 'ronda ' + r + ': sale ' + landed + ' y desaparece solo ese segmento (' + before.length + ' → ' + after.length + ')');
+    if (sameCat && exact) okRounds++;
   }
-  check(host.state.wheel.length === 0, 'cada BONUS sale una sola vez');
-  if (host.state.wheel.length === 0) console.log('  ✓ los 3 BONUS: sin pregunta, +5 a todos los equipos, cada uno desaparece al usarse');
-
+  check(new Set(seen).size === 10, '10 preguntas distintas, ninguna repetida');
+  check(g.state.phase === 'GAME_OVER' && g.state.wheel.length === 10, 'tras 10 rondas termina la partida y quedan 10 segmentos sin usar');
+  console.log('  ' + (okRounds === 10 ? '✓' : '✗') + ' 10 rondas: en cada una desaparece exactamente el segmento que salió (20 → 10)');
   console.log(`\n${ok}/${ok + bad} comprobaciones correctas${bad ? ' — HAY FALLOS' : ''}`);
   process.exit(bad ? 1 : 0);
 })();

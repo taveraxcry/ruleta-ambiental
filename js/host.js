@@ -167,10 +167,9 @@
       const n = s.wheel.length;
       let index = Math.floor(Math.random() * n);
       // Solo pruebas: forzar un segmento concreto
-      const forced = R.DEBUG_FORCE_BONUS ? s.wheel.findIndex(function (x) { return x.c === 'BONUS'; })
-        : R.DEBUG_FORCE_QUESTION ? s.wheel.findIndex(function (x) { return x.q === R.DEBUG_FORCE_QUESTION; }) : -1;
+      const forced = R.DEBUG_FORCE_QUESTION ? s.wheel.findIndex(function (x) { return x.q === R.DEBUG_FORCE_QUESTION; }) : -1;
       if (forced >= 0) index = forced;
-      R.DEBUG_FORCE_BONUS = R.DEBUG_FORCE_QUESTION = null;
+      R.DEBUG_FORCE_QUESTION = null;
 
       const seg = s.wheel[index];
       const segDeg = 360 / n;
@@ -181,7 +180,7 @@
       const rotation = Math.floor(s.wheelRotation / 360) * 360 + extraTurns * 360 + landing;
 
       s.currentCategory = seg.c;
-      s.currentQuestion = seg.c === 'BONUS' ? null : R.QUESTIONS.find(function (q) { return q.id === seg.q; });
+      s.currentQuestion = R.QUESTIONS.find(function (q) { return q.id === seg.q; });
       s.spin = { id: Date.now(), categoryIndex: index, rotation: rotation, durationMs: CFG.SPIN_DURATION_MS };
       s.wheelRotation = rotation;
       this.go(P.SPINNING);
@@ -195,7 +194,7 @@
 
     showQuestion() {
       const s = this.state;
-      if (s.phase !== P.CATEGORY_SELECTED || s.currentCategory === 'BONUS' || !this.go(P.QUESTION_ACTIVE)) return;
+      if (s.phase !== P.CATEGORY_SELECTED || !this.go(P.QUESTION_ACTIVE)) return;
       s.questionStartedAt = Date.now();
       s.questionDeadline = s.questionStartedAt + CFG.QUESTION_TIME * 1000;
       s.answers = {};
@@ -209,14 +208,6 @@
       this.clearTimers();
       this.publish();
       this.later(this.finishRound.bind(this), CFG.RESULTS_DELAY_MS);
-    }
-
-    /* BONUS: se salta la pregunta y todos los equipos suman BONUS_POINTS. */
-    applyBonus() {
-      const s = this.state;
-      if (s.phase !== P.CATEGORY_SELECTED || s.currentCategory !== 'BONUS') return;
-      s.teams.forEach(function (t) { t.score += CFG.BONUS_POINTS; });
-      this.advance();
     }
 
     /* ---------- Respuestas ---------- */

@@ -276,14 +276,13 @@ returns text[] language sql immutable as $$
                'MONTREAL','GINEBRA','GOTHENBURG','BRUNDTLAND','EPI','INTEGRADORA'];
 $$;
 
--- Ruleta inicial: UN segmento por pregunta + 3 BONUS. Mismo algoritmo que R.buildWheel (js/config.js):
--- primera pregunta de cada categoría, luego la segunda…; los BONUS repartidos a lo largo.
+-- Ruleta inicial: UN segmento por pregunta. Mismo algoritmo que R.buildWheel (js/config.js):
+-- primera pregunta de cada categoría, luego la segunda…
 -- o_wheel es público ([{c: categoría}]); o_qids (qué pregunta hay en cada segmento) es privado.
 create or replace function public._build_wheel(out o_wheel jsonb, out o_qids int[])
 language plpgsql stable as $$
 declare
-  v_bonus constant int := 3;
-  v_c text; v_k int := 0; v_added boolean; v_q int; v_total int; v_pos int;
+  v_c text; v_k int := 0; v_added boolean; v_q int;
 begin
   o_wheel := '[]'::jsonb;
   o_qids := '{}';
@@ -299,15 +298,6 @@ begin
     end loop;
     exit when not v_added;
     v_k := v_k + 1;
-  end loop;
-  v_total := jsonb_array_length(o_wheel) + v_bonus;
-  for b in 0 .. v_bonus - 1 loop
-    v_pos := floor((b + 0.5) * v_total / v_bonus)::int;
-    o_wheel := (select coalesce(jsonb_agg(e order by i), '[]'::jsonb) from (
-                  select e, (case when i - 1 < v_pos then i - 1 else i end) as i
-                  from jsonb_array_elements(o_wheel) with ordinality as x(e, i)
-                  union all select jsonb_build_object('c', 'BONUS'), v_pos) y);
-    o_qids := o_qids[1:v_pos] || 0 || o_qids[v_pos + 1:];
   end loop;
 end $$;
 
@@ -346,7 +336,7 @@ begin
   v_landing := mod(mod(360 - (v_idx * v_seg + v_seg / 2 + v_jitter), 360) + 360, 360);
   v_rotation := floor(r.wheel_rotation / 360) * 360 + (7 + floor(random() * 3)) * 360 + v_landing;
 
-  update public.room_private set pending_category = v_cat, question_id = nullif(v_qid, 0) where room_code = r.code;
+  update public.room_private set pending_category = v_cat, question_id = v_qid where room_code = r.code;
   update public.rooms set
     phase = 'SPINNING',
     spin = jsonb_build_object('id', (extract(epoch from clock_timestamp()) * 1000)::bigint,
@@ -376,7 +366,6 @@ declare r public.rooms; q public.questions; v_start timestamptz := clock_timesta
 begin
   r := public._host_room(p_code);
   perform public._require_phase(r, 'CATEGORY_SELECTED');
-  if r.current_category = 'BONUS' then raise exception 'Salió BONUS: no hay pregunta en esta ronda'; end if;
   select qq.* into q from public.questions qq
     where qq.id = (select question_id from public.room_private where room_code = r.code);
   update public.rooms set
@@ -400,7 +389,7 @@ begin
 end $$;
 
 -- Quita de la ruleta el segmento usado y pasa a la siguiente ronda, o termina la partida.
--- Interna: la llaman finish_round y apply_bonus con la sala ya bloqueada.
+-- Interna: la llama finish_round con la sala ya bloqueada.
 create or replace function public._advance(p_code text)
 returns void language plpgsql security definer set search_path = public as $$
 declare r public.rooms; v_idx int; v_q int[];
@@ -445,23 +434,12 @@ begin
   perform public._advance(r.code);
 end $$;
 
--- BONUS: se salta la pregunta y todos los equipos suman 5 puntos.
-create or replace function public.apply_bonus(p_code text)
-returns void language plpgsql security definer set search_path = public as $$
-declare r public.rooms;
-begin
-  r := public._host_room(p_code);
-  perform public._require_phase(r, 'CATEGORY_SELECTED');
-  if r.current_category is distinct from 'BONUS' then raise exception 'Esta ronda no es BONUS'; end if;
-  update public.teams set score = score + 5 where room_code = r.code;
-  perform public._advance(r.code);
-end $$;
-
 -- Funciones de versiones anteriores (resultados y marcador entre rondas)
 drop function if exists public.show_results(text);
 drop function if exists public.show_leaderboard(text);
 drop function if exists public.next_round(text);
 drop function if exists public._pick_question(int[]);
+drop function if exists public.apply_bonus(text);   -- el BONUS se eliminó
 
 -- ---------- RPC: respuesta de un equipo ----------
 
@@ -513,7 +491,7 @@ begin
     where n.nspname = 'public'
       and p.proname in ('is_room_member','server_time','create_room','join_room','leave_room','close_room',
                         'start_game','spin','reveal_category','show_question','close_answers',
-                        'finish_round','apply_bonus','submit_answer',
+                        'finish_round','submit_answer',
                         '_calc_score','_host_room','_require_phase','_wheel_categories','_build_wheel','_advance')
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);

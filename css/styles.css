@@ -277,10 +277,6 @@ label { font-size: .76rem; letter-spacing: .14em; color: var(--muted); font-weig
 }
 .wheel-rotor.refresh { animation: wheelRefresh .6s var(--ease); }
 @keyframes wheelRefresh { 0% { filter: brightness(1.35) saturate(1.2); transform-origin: center; } }
-.wheel-wrap.is-bonus .wheel-highlight path { fill: rgba(255, 220, 120, .3); stroke: #ffe7a3; filter: drop-shadow(0 0 3px rgba(255, 210, 100, .95)); }
-.wheel-wrap.is-bonus .wheel-aura { background: radial-gradient(circle, rgba(255, 200, 80, .3), rgba(255, 200, 80, 0) 65%); }
-.category-reveal.bonus { --cat: #d9a21b; background: linear-gradient(150deg, rgba(217, 162, 27, .38), rgba(40, 26, 4, .7)); border-color: #f2cf6b; }
-.category-reveal.bonus .cat-name { color: #ffe7a3; }
 .wheel-gloss {
   position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
   background: radial-gradient(120% 80% at 30% 8%, rgba(255, 255, 255, .2), rgba(255, 255, 255, 0) 45%),
@@ -614,7 +610,6 @@ body.timer-off .g-timer { display: inline-flex; animation: reveal .3s var(--ease
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .bg-glow span { animation: none; }
 }
-.category-reveal.bonus .cat-name { font-size: clamp(1.8rem, 5vw, 2.6rem); white-space: nowrap; }
 
 /* =====================================================================
    Pulido: interacciones, ciclo de logística reversa y pantalla de carga

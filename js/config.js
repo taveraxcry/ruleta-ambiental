@@ -8,8 +8,6 @@
     QUESTION_TIME: 20,         // Segundos por pregunta
     SPIN_DURATION_MS: 7000,    // Duración del giro (debe coincidir con spin() en supabase/schema.sql)
     RESULTS_DELAY_MS: 2200,    // Pausa con "Respuestas cerradas" antes de volver a la ruleta
-    BONUS_COUNT: 3,            // Segmentos BONUS en la ruleta (cada uno sale una sola vez)
-    BONUS_POINTS: 5,           // Puntos para todos los equipos cuando sale un BONUS (se salta la pregunta)
     MAX_TEAM_NAME: 20,
     MIN_TEAM_NAME: 2,
     HEARTBEAT_MS: 4000,        // Latido de los equipos (modo local)
@@ -39,12 +37,9 @@
     { id: 'INTEGRADORA', name: 'INTEGRADORA', color: '#0e7fb8', enabled: true,  topic: 'Relaciona varios instrumentos ambientales' }
   ];
 
-  /* Segmento especial de la ruleta: salta la pregunta y suma BONUS_POINTS a todos los equipos. */
-  R.BONUS = { id: 'BONUS', name: 'BONUS', color: '#d9a21b', topic: 'Se salta la pregunta: +5 puntos para todos los equipos' };
-
-  /* Segmentos de la ruleta: UNO POR PREGUNTA, más los BONUS. Cada segmento usado desaparece, así la ruleta
-     mantiene su tamaño pero va teniendo menos opciones. Orden: ronda por categorías (primera pregunta de
-     cada categoría, luego la segunda…) para no juntar colores; los BONUS repartidos a lo largo.
+  /* Segmentos de la ruleta: UNO POR PREGUNTA. Cada segmento usado desaparece al empezar la ronda siguiente,
+     así la ruleta mantiene su tamaño pero va teniendo menos opciones. Orden: ronda por categorías (primera
+     pregunta de cada categoría, luego la segunda…) para no juntar colores.
      IMPORTANTE: public._build_wheel() en supabase/schema.sql usa exactamente el mismo algoritmo. */
   R.buildWheel = function (questions) {
     const order = R.CATEGORIES.filter(function (c) { return c.enabled; }).map(function (c) { return c.id; });
@@ -58,8 +53,6 @@
       order.forEach(function (c) { if (byCat[c] && byCat[c][k] !== undefined) { segs.push({ c: c, q: byCat[c][k] }); added = true; } });
       if (!added) break;
     }
-    const B = R.CONFIG.BONUS_COUNT, total = segs.length + B;
-    for (let b = 0; b < B; b++) segs.splice(Math.floor((b + 0.5) * total / B), 0, { c: 'BONUS', q: 0 });
     return segs;
   };
 

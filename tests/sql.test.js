@@ -45,18 +45,19 @@ async function rejects(promise, re, label) {
   let code;
 
   console.log('\nSala y equipos');
-  await test('el anfitrión crea una sala con código ECO-XXX y una ruleta de 23 segmentos', async () => {
+  await test('el anfitrión crea una sala con código ECO-XXX y una ruleta de 20 segmentos (uno por pregunta)', async () => {
     code = await rpc(host, 'create_room', 4, 20);
     assert.match(code, /^ECO-[2-9A-HJKMNP-Z]{3}$/);
     const r = await room(host, code), p = await priv(code);
-    assert.strictEqual(r.wheel.length, 23);
-    assert.strictEqual(p.wheel_qids.length, 23);
+    assert.strictEqual(r.wheel.length, 20);
+    assert.strictEqual(p.wheel_qids.length, 20);
+    assert.deepStrictEqual(p.wheel_qids.slice().sort((a, b) => a - b), Array.from({ length: 20 }, (_, i) => i + 1), 'cada pregunta tiene exactamente un segmento');
   });
-  await test('la ruleta del servidor es idéntica a la del frontend (orden, categorías, preguntas y BONUS)', async () => {
+  await test('la ruleta del servidor es idéntica a la del frontend (orden, categorías y preguntas)', async () => {
     const r = await room(host, code), p = await priv(code);
     const js = RJ.buildWheel(RJ.QUESTIONS);
     assert.deepStrictEqual(r.wheel.map((s, i) => s.c + '#' + p.wheel_qids[i]), js.map((s) => s.c + '#' + s.q));
-    assert.strictEqual(r.wheel.filter((s) => s.c === 'BONUS').length, 3);
+    assert.ok(!r.wheel.some((s) => s.c === 'BONUS'), 'no hay BONUS');
     assert.ok(!r.wheel.some((s) => s.c === 'ROTTERDAM' || s.c === 'MONTREAL'), 'categorías sin material no aparecen');
   });
   await test('la ruleta pública no revela qué pregunta hay en cada segmento', async () => {
@@ -89,7 +90,7 @@ async function rejects(promise, re, label) {
 
   console.log('\nSeguridad');
   await test('los equipos no pueden usar controles del anfitrión', async () => {
-    for (const fn of ['start_game', 'spin', 'reveal_category', 'show_question', 'close_answers', 'finish_round', 'apply_bonus', 'close_room']) {
+    for (const fn of ['start_game', 'spin', 'reveal_category', 'show_question', 'close_answers', 'finish_round', 'close_room']) {
       await rejects(rpc(teams.A, fn, code), /Solo el anfitrión/, fn);
     }
   });
@@ -147,7 +148,7 @@ async function rejects(promise, re, label) {
     assert.strictEqual(r.phase, 'CATEGORY_SELECTED');
     assert.strictEqual(r.current_category, h.wheel[idx].c);
     // Para que el resto del flujo sea determinista, se vuelve a girar la pregunta 7 si no salió
-    if (r.current_category === 'BONUS' || p.wheel_qids[idx] !== 7) {
+    if (p.wheel_qids[idx] !== 7) {
       await db.admin.query("update public.rooms set phase='WAITING' where code=$1", [code]);
       await setWheel(code, [{ c: 'CITES', q: 7 }].concat(before.wheel.map((s, i) => ({ c: s.c, q: p.wheel_qids[i] })).filter((s, i) => i !== idx7)));
       await spinAndReveal(code);
@@ -201,60 +202,54 @@ async function rejects(promise, re, label) {
     await rejects(rpc(host, 'finish_round', code), /fase/, 'segundo cálculo');
   });
 
-  console.log('\nBONUS');
-  await test('BONUS: no tiene pregunta, suma 5 a todos, desaparece de la ruleta y pasa a la siguiente ronda', async () => {
+  console.log('\nRuleta: cada pregunta que sale desaparece');
+  await test('ronda 2: desaparece EXACTAMENTE el segmento que salió; los demás quedan en el mismo orden', async () => {
     const r0 = await room(host, code), p0 = await priv(code);
-    const bi = r0.wheel.findIndex((s) => s.c === 'BONUS');
-    const segs = r0.wheel.map((s, i) => ({ c: s.c, q: p0.wheel_qids[i] }));
-    await setWheel(code, [segs[bi]].concat(segs.filter((_, i) => i !== bi)));   // BONUS en el segmento 0
-    await db.admin.query("update public.rooms set wheel = jsonb_build_array(wheel->0) where code=$1", [code]);
-    await db.admin.query('update public.room_private set wheel_qids = wheel_qids[1:1] where room_code=$1', [code]);
+    const before = r0.wheel.map((s, i) => s.c + '#' + p0.wheel_qids[i]);
     await spinAndReveal(code);
-    const r = await room(teams.B, code);
-    assert.strictEqual(r.current_category, 'BONUS');
-    await rejects(rpc(host, 'show_question', code), /BONUS/, 'pregunta en BONUS');
-    await rejects(rpc(teams.A, 'apply_bonus', code), /Solo el anfitrión/, 'bonus por un equipo');
-    await rpc(host, 'apply_bonus', code);
-    const sc = await scores(code);
-    assert.deepStrictEqual([sc['Eco Team'].score, sc['Los Verdes'].score, sc['Guardianes'].score], [105, 5, 5]);
-    assert.deepStrictEqual([sc['Eco Team'].correct_count, sc['Los Verdes'].correct_count], [1, 0], 'el BONUS no cuenta como acierto');
-    const r2 = await room(host, code);
-    assert.strictEqual(r2.phase, 'WAITING'); assert.strictEqual(r2.current_round, 3);
-    assert.strictEqual(r2.wheel.length, 0, 'el BONUS usado desaparece');
-    await rejects(rpc(host, 'apply_bonus', code), /fase/, 'BONUS repetido');
+    const r1 = await room(host, code);
+    const idx = r1.spin.categoryIndex;
+    const landed = before[idx];
+    assert.strictEqual(r1.current_category, landed.split('#')[0], 'la categoría anunciada es la del segmento');
+    await rpc(host, 'show_question', code);
+    assert.strictEqual((await room(host, code)).question.id, Number(landed.split('#')[1]), 'la pregunta es la del segmento');
+    await rpc(host, 'close_answers', code); await rpc(host, 'finish_round', code);
+    const r2 = await room(host, code), p2 = await priv(code);
+    const after = r2.wheel.map((s, i) => s.c + '#' + p2.wheel_qids[i]);
+    assert.deepStrictEqual(after, before.filter((_, i) => i !== idx));
+    const cat = landed.split('#')[0];
+    assert.strictEqual(after.filter((x) => x.startsWith(cat + '#')).length, before.filter((x) => x.startsWith(cat + '#')).length - 1,
+      'de ' + cat + ' queda un segmento menos');
   });
   await test('si la ruleta se queda sin segmentos, se vuelve a armar completa al girar', async () => {
+    await db.admin.query("update public.rooms set wheel='[]' where code=$1", [code]);
+    await db.admin.query("update public.room_private set wheel_qids='{}' where room_code=$1", [code]);
     await rpc(host, 'spin', code);
     const r = await room(host, code);
-    assert.strictEqual(r.wheel.length, 23);
+    assert.strictEqual(r.wheel.length, 20);
     await sleep(6900); await rpc(host, 'reveal_category', code);
   });
 
   console.log('\nPuntuación por velocidad y final');
   await test('respuesta correcta a ~2.4 s cae en el tramo 3–4 s y vale 90', async () => {
-    let r = await room(host, code);
-    if (r.current_category === 'BONUS') { await rpc(host, 'apply_bonus', code); }
-    else {   // ronda 3: se responde la pregunta que salió
-      await rpc(host, 'show_question', code);
-      r = await room(host, code);
-      const before = (await scores(code))['Los Verdes'].score;
-      await sleep(2300);
-      await rpc(teams.B, 'submit_answer', code, await correctOf(r.question.id));
-      await rpc(host, 'close_answers', code); await rpc(host, 'finish_round', code);
-      assert.strictEqual((await scores(code))['Los Verdes'].score - before, 90);
-    }
+    await rpc(host, 'show_question', code);
+    const r = await room(host, code);
+    const before = (await scores(code))['Los Verdes'].score;
+    await sleep(2300);
+    await rpc(teams.B, 'submit_answer', code, await correctOf(r.question.id));
+    await rpc(host, 'close_answers', code); await rpc(host, 'finish_round', code);
+    assert.strictEqual((await scores(code))['Los Verdes'].score - before, 90);
   });
   await test('tras la última ronda la partida termina (GAME_OVER) con puntos y aciertos guardados', async () => {
     let r = await room(host, code);
     assert.strictEqual(r.current_round, 4);
     await spinAndReveal(code);
-    r = await room(host, code);
-    if (r.current_category === 'BONUS') await rpc(host, 'apply_bonus', code);
-    else { await rpc(host, 'show_question', code); await rpc(host, 'close_answers', code); await rpc(host, 'finish_round', code); }
+    await rpc(host, 'show_question', code); await rpc(host, 'close_answers', code); await rpc(host, 'finish_round', code);
     r = await room(teams.C, code);
     assert.strictEqual(r.phase, 'GAME_OVER');
     const t = (await q(teams.C, 'select name, score, correct_count from public.teams where room_code=$1 order by score desc', [code])).rows;
-    assert.strictEqual(t[0].name, 'Eco Team'); assert.ok(t[0].score >= 105);
+    assert.strictEqual(t[0].name, 'Eco Team'); assert.strictEqual(t[0].score, 100);
+    assert.strictEqual(t.find((x) => x.name === 'Los Verdes').score, 90);
   });
   await test('el anfitrión puede cerrar la sala (se borran equipos)', async () => {
     await rpc(host, 'close_room', code);

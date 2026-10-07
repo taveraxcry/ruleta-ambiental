@@ -251,7 +251,6 @@
     spin() { return this.call('spin'); }
     showQuestion() { return this.call('show_question'); }
     closeAnswers() { return this.call('close_answers'); }
-    applyBonus() { return this.call('apply_bonus'); }
 
     async close() {
       store(function () { localStorage.removeItem(HOST_KEY); });

@@ -110,14 +110,6 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   await dup.waitForFunction(() => /ya comenzó/.test(document.querySelector('#join-error').textContent));
   check(true, 'no se admiten equipos nuevos con la partida iniciada');
 
-  /* Solo pruebas: arma la ruleta de la sala para que el giro sea determinista. */
-  async function setWheel(filterFn) {
-    const r = await roomRow(code);
-    const p = (await bridge.db.admin.query('select wheel_qids from public.room_private where room_code=$1', [code])).rows[0];
-    const segs = r.wheel.map((s, i) => ({ c: s.c, q: p.wheel_qids[i] })).filter(filterFn);
-    await bridge.db.admin.query('update public.rooms set wheel=$2 where code=$1', [code, JSON.stringify(segs.map((s) => ({ c: s.c })))]);
-    await bridge.db.admin.query('update public.room_private set wheel_qids=$2 where room_code=$1', [code, segs.map((s) => s.q)]);
-  }
   const dbScores = async () => Object.fromEntries((await bridge.db.admin.query('select name, score, correct_count from public.teams where room_code=$1', [code])).rows.map((r) => [r.name, r]));
   const wheelCounts = () => everyone((p) => p.evaluate(() => window.Ruleta.debugState().wheel.length));
 
@@ -134,9 +126,9 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
 
   async function playQuestionRound(n, plan) {
     console.log('\n' + (n + 2) + '. Ronda ' + n + ' (pregunta)');
-    await setWheel((s) => s.c !== 'BONUS');   // esta ronda debe ser de pregunta
-    await sleep(600);
+    const segBefore = (await roomRow(code)).wheel.map((x) => x.c);
     await spinAll();
+    const landedIdx = (await roomRow(code)).spin.categoryIndex;
     await host.click('[data-action="show"]');
     await everyone((p) => visible(p, '#stage-question .q-text'));
     const qs = await everyone((p) => text(p, '.q-text'));
@@ -205,13 +197,18 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
     }
     const wheelBefore = (await wheelCounts())[0];
     if (plan.manualClose) await host.click('[data-action="close"]');
+    const last = n === (await roomRow(code)).total_rounds;
     await Promise.all(teams.map((p) => p.waitForSelector('.answer-status:has-text("los puntos se revelan al final")', { timeout: 40000 })));
-    await host.waitForSelector('#host-actions button:has-text("VOLVIENDO A LA RULETA")', { timeout: 5000 });
-    check(true, 'al cerrar, los equipos ven "Respuestas cerradas · los puntos se revelan al final" y el anfitrión "Volviendo a la ruleta"');
+    await host.waitForSelector('#host-actions button:has-text("' + (last ? 'CALCULANDO PUNTAJE FINAL' : 'VOLVIENDO A LA RULETA') + '")', { timeout: 5000 });
+    check(true, 'al cerrar, los equipos ven "Respuestas cerradas · los puntos se revelan al final" y el anfitrión "' + (last ? 'Calculando puntaje final' : 'Volviendo a la ruleta') + '"');
+    if (last) return;   // tras la última ronda se pasa a la pantalla final
     await everyone((p) => visible(p, '#stage-wheel', 15000));
     check(true, 'y vuelven DIRECTO a la ruleta, sin pantalla de resultados ni marcador');
     const wc = await wheelCounts();
     check(allEqual(wc) && wc[0] === wheelBefore - 1, 'el segmento usado desaparece de la ruleta en todos los dispositivos (' + wheelBefore + ' → ' + wc[0] + ')');
+    const segAfter = await everyone((p) => p.evaluate(() => window.Ruleta.debugState().wheel.map((x) => x.c)));
+    check(allEqual(segAfter) && JSON.stringify(segAfter[0]) === JSON.stringify(segBefore.filter((_, i) => i !== landedIdx)),
+      'desaparece exactamente el segmento que salió (' + segBefore[landedIdx] + '); el resto queda igual y en el mismo orden');
     check((await Promise.all(teams.map((p) => text(p, '#g-right')))).every((t) => !/pts/.test(t)), 'los equipos no ven su puntaje durante la partida');
     check((await Promise.all(all().map((p) => p.locator('.my-result, .board, #stage-results').count()))).every((c) => c === 0), 'no hay resultados ni marcador entre rondas');
   }
@@ -241,29 +238,23 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   check(sc['Guardianes'].score === 80, 'correcta a ~5 s = 80');
   check(sc['Eco Team'].score === 100, 'incorrecta rápida = 0 (Eco Team sigue en 100)');
 
-  console.log('\n5. Ronda 3 (BONUS)');
-  // Las rondas de pregunta quitaron los BONUS: se dejan 3 BONUS explícitos para esta ronda
-  await bridge.db.admin.query('update public.rooms set wheel=$2 where code=$1', [code, JSON.stringify([{ c: 'BONUS' }, { c: 'BONUS' }, { c: 'BONUS' }])]);
-  await bridge.db.admin.query("update public.room_private set wheel_qids='{0,0,0}' where room_code=$1", [code]);
-  await sleep(600);
-  const bonusCat = await spinAll();
-  const rb = await roomRow(code);
-  check(/\+5 PUNTOS/.test(bonusCat), 'sale BONUS en todos los dispositivos' + (/\+5 PUNTOS/.test(bonusCat) ? '' : ' — ve: ' + bonusCat + ' | BD: ' + rb.current_category + ' ' + JSON.stringify(rb.wheel) + ' ' + JSON.stringify(rb.spin)));
-  check(await host.locator('[data-action="show"]').count() === 0 && await host.locator('[data-action="bonus"]').count() === 1, 'el anfitrión no puede mostrar pregunta, solo aplicar el bonus');
-  await host.click('[data-action="bonus"]');
+  await playQuestionRound(3, {
+    checkLocks: false, reloadB: false, manualClose: true,
+    answers: [{ page: C, at: 500, option: 'ok' }]
+  });
 
   console.log('\n6. Final');
   await everyone((p) => visible(p, '#stage-gameover'));
   sc = await dbScores();
-  check(sc['Eco Team'].score === 105 && sc['Los Verdes'].score === 95 && sc['Guardianes'].score === 85, 'el BONUS sumó 5 a todos: 105 / 95 / 85');
-  check(sc['Eco Team'].correct_count === 1 && sc['Los Verdes'].correct_count === 1 && sc['Guardianes'].correct_count === 1, 'aciertos guardados: 1 / 1 / 1');
+  check(sc['Eco Team'].score === 100 && sc['Los Verdes'].score === 90 && sc['Guardianes'].score === 180, 'puntos finales: Guardianes 180 (80 + 100), Eco Team 100, Los Verdes 90');
+  check(sc['Eco Team'].correct_count === 1 && sc['Los Verdes'].correct_count === 1 && sc['Guardianes'].correct_count === 2, 'aciertos guardados: 1 / 1 / 2');
   const winners = await everyone((p) => text(p, '.winner-name'));
-  check(allEqual(winners) && /ECO TEAM/i.test(winners[0]), 'todos ven el mismo ganador: ' + winners[0].replace(/\n/g, ' '));
+  check(allEqual(winners) && /GUARDIANES/i.test(winners[0]), 'todos ven el mismo ganador: ' + winners[0].replace(/\n/g, ' '));
   const scoreTxt = await everyone((p) => text(p, '.winner-score'));
-  check(allEqual(scoreTxt) && /105/.test(scoreTxt[0]), 'puntuación final del ganador: ' + scoreTxt[0]);
+  check(allEqual(scoreTxt) && /180/.test(scoreTxt[0]), 'puntuación final del ganador: ' + scoreTxt[0]);
   const finals = await everyone((p) => rowsOf(p, '#stage-gameover .rank-row'));
   check(allEqual(finals) && finals[0].length === 3 && /acierto/.test(finals[0][0]), 'clasificación final idéntica para todos, con puntos y aciertos');
-  check(/105 pts/.test(await text(A, '#g-right')), 'al final cada equipo ya ve su puntaje');
+  check(/100 pts/.test(await text(A, '#g-right')), 'al final cada equipo ya ve su puntaje');
 
   check(errors.length === 0, 'sin errores de JavaScript en ningún dispositivo' + (errors.length ? ': ' + errors.join(' | ') : ''));
 
@@ -271,4 +262,4 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
   await browser.close();
   await bridge.stop();
   process.exit(failures ? 1 : 0);
-})().catch(async (e) => { console.error('ERROR EN LA PRUEBA:', e.message); try { const r = await globalThis.__bridge.db.admin.query('select code, phase, answered_count, question_deadline, now() n from public.rooms'); console.log('estado en la base:', JSON.stringify(r.rows)); } catch (x) {} process.exit(2); });
+})().catch(async (e) => { console.error('ERROR EN LA PRUEBA:', e && e.stack ? e.stack.split(/\n/).slice(0, 3).join(' | ') : e); try { const r = await globalThis.__bridge.db.admin.query('select code, phase, answered_count, question_deadline, now() n from public.rooms'); console.log('estado en la base:', JSON.stringify(r.rows)); } catch (x) {} try { await globalThis.__bridge.stop(); } catch (x) {} process.exit(2); });

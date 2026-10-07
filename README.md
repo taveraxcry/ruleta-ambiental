@@ -9,12 +9,11 @@ Concurso educativo multijugador sobre gestión ambiental y logística reversa. H
 
 ## Cómo se juega
 
-1. El anfitrión gira la ruleta. Cada segmento es **una pregunta** (con el color de su tema) o un **BONUS**.
+1. El anfitrión gira la ruleta. Cada segmento es **una pregunta**, con el color de su tema.
 2. Si sale una pregunta, todos los equipos la reciben a la vez y tienen **20 s**. Una sola respuesta por equipo.
 3. Al cerrar, **no se muestran resultados**: se vuelve directo a la ruleta. Los puntos se guardan en segundo plano.
-4. Si sale **BONUS**, se salta la pregunta y **todos los equipos suman 5 puntos**.
-5. Cada segmento usado **desaparece**: la ruleta conserva su tamaño pero tiene cada vez menos opciones (23 al inicio: 20 preguntas + 3 BONUS).
-6. Tras la ronda 10 se revela la **clasificación final** con puntos y aciertos de cada equipo.
+4. Cada segmento usado **desaparece** al empezar la ronda siguiente: la ruleta conserva su tamaño pero tiene cada vez menos opciones (20 al inicio, 10 al final). Un tema con dos preguntas tiene dos segmentos: sale uno y el otro sigue.
+5. Tras la ronda 10 se revela la **clasificación final** con puntos y aciertos de cada equipo.
 
 ## Puesta en marcha (una sola vez)
 
@@ -69,9 +68,9 @@ Ticks de la ruleta, selección y confirmación se sintetizan con Web Audio (sin 
 ```
 cd tests
 npm install
-npm run test:questions  # las 20 preguntas contra la lista oficial, jugadas una a una en el motor, y los 3 BONUS
-npm run test:sql        # seguridad, flujo, ruleta que se encoge, BONUS y puntuación sobre Postgres real
-npm run test:e2e        # anfitrión + 3 teléfonos (QR, mouse y táctil): 2 rondas de pregunta + BONUS + final
+npm run test:questions  # las 20 preguntas contra la lista oficial, jugadas una a una, y una partida de 10 rondas
+npm run test:sql        # seguridad, flujo, ruleta que se encoge y puntuación sobre Postgres real
+npm run test:e2e        # anfitrión + 3 teléfonos (QR, mouse y táctil): 3 rondas + final
 npm run test:preview    # ruleta, sonido, A/B/C/D, V/F, bloqueo, tiempo agotado, final, teléfono, 0 llamadas a Supabase
 ```
 

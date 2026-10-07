@@ -1,4 +1,4 @@
-/* Interacción con mouse y táctil, ruleta (giro, sonido, segmentos que desaparecen, BONUS), temporizador,
+/* Interacción con mouse y táctil, ruleta (giro, sonido, segmentos que desaparecen), temporizador,
    puntaje oculto hasta el final y modo local. Usa el modo PREVIEW (oculto, ?demo=1) con Supabase
    "configurado" (puente de pruebas) para demostrar además que el Preview no toca Supabase. */
 const path = require('path');
@@ -39,9 +39,9 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
     return window.Ruleta.QUESTIONS.find((q) => q.question === t);
   });
   async function spin(force) {
-    if (force) await R((f) => { if (f === 'BONUS') window.Ruleta.DEBUG_FORCE_BONUS = true; else window.Ruleta.DEBUG_FORCE_QUESTION = f; }, force);
+    if (force) await R((f) => { window.Ruleta.DEBUG_FORCE_QUESTION = f; }, force);
     await P.click('[data-action="spin"]');
-    await P.waitForSelector('[data-action="show"], [data-action="bonus"]', { timeout: 15000 });
+    await P.waitForSelector('[data-action="show"]', { timeout: 15000 });
     return P.locator('#category-reveal .cat-name').innerText();
   }
   const backToWheel = () => P.waitForSelector('[data-action="spin"], #stage-gameover:not(.hidden)', { timeout: 30000 });
@@ -54,8 +54,7 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
   await P.waitForSelector('[data-action="spin"]');
   check(await P.locator('#preview-badge').isVisible(), 'el modo de revisión sigue disponible con ?demo=1, marcado como DATOS SIMULADOS');
   let s = await st();
-  check(s.n === 23, 'la ruleta empieza con 23 segmentos (20 preguntas + 3 BONUS)');
-  check(await R(() => window.Ruleta.debugState().wheel.filter((x) => x.c === 'BONUS').length) === 3, 'hay 3 segmentos BONUS');
+  check(s.n === 20, 'la ruleta empieza con 20 segmentos, uno por pregunta (sin BONUS)');
 
   console.log('\n2. Giro: animación, sonido y categoría');
   await R(() => { window.Ruleta.DEBUG_FORCE_QUESTION = 7; });   // CITES, selección múltiple, correcta = B
@@ -119,20 +118,9 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
   check(await P.locator('.my-result, .board, #stage-results, #stage-leaderboard').count() === 0, 'no existe marcador entre rondas');
   check(!/pts/.test(await P.locator('#g-right').innerText()), 'el puntaje no se muestra durante la partida');
   check(s.teams[0].score === 100 && s.teams[0].correct === 1, 'pero se guardó: correcta y rápida = 100 pts, 1 acierto');
-  check(s.n === 22, 'el segmento usado desapareció (23 → 22)');
+  check(s.n === 19, 'el segmento usado desapareció (20 → 19)');
 
-  console.log('\n5. BONUS');
-  const bonusText = await spin('BONUS');
-  check(/\+5 PUNTOS/.test(bonusText), 'sale BONUS: "' + bonusText.replace(/\n/g, ' ') + '"');
-  check(await P.locator('[data-action="show"]').count() === 0, 'un BONUS no tiene pregunta');
-  const before = (await st()).teams.map((t) => t.score);
-  await P.click('[data-action="bonus"]');
-  await backToWheel();
-  s = await st();
-  check(s.teams.every((t, i) => t.score === before[i] + 5), 'todos los equipos suman 5 puntos');
-  check(s.n === 21 && s.round === 3, 'el BONUS desaparece y se pasa a la ronda 3 (21 segmentos)');
-
-  console.log('\n6. Verdadero/Falso y tiempo agotado');
+  console.log('\n5. Verdadero/Falso y tiempo agotado');
   await spin(10);   // RAMSAR, V/F, correcta = Falso
   await P.click('[data-action="show"]');
   await P.waitForSelector('button.option.tf.is-live');
@@ -143,35 +131,33 @@ function check(cond, msg) { checks++; if (cond) console.log('  ✓', msg); else 
   await P.click('[data-action="close"]');
   await backToWheel();
   s = await st();
-  check(s.teams[0].score === 105 && s.teams[0].correct === 1, 'respuesta incorrecta = 0 puntos (sigue en 105)');
+  check(s.teams[0].score === 100 && s.teams[0].correct === 1 && s.n === 18 && s.round === 3, 'respuesta incorrecta = 0 puntos (sigue en 100); quedan 18 segmentos');
   await spin(null);
-  const isBonus = await P.locator('[data-action="bonus"]').count();
-  if (isBonus) { await P.click('[data-action="bonus"]'); check(true, 'ronda 4: salió BONUS (azar)'); }
-  else {
-    await P.click('[data-action="show"]');
-    const q4 = await questionOf();
-    check(q4 && (await P.locator('.cat-badge').innerText()).length > 0, 'ronda 4: pregunta aleatoria de la categoría del segmento (' + q4.category + ')');
-    const sc0 = (await st()).teams[0].score;
-    await P.waitForSelector('.answer-status.late', { timeout: 30000 });
-    check(/Tiempo agotado · sin respuesta/.test(await P.locator('.answer-status.late').innerText()), 'al acabar los 20 s sin responder: "Tiempo agotado · sin respuesta"');
-    await backToWheel();
-    check((await st()).teams[0].score === sc0, 'sin respuesta = 0 puntos');
-  }
+  await P.click('[data-action="show"]');
+  const q3 = await questionOf();
+  check(q3 && q3.category === (await st()).cat, 'ronda 3: pregunta al azar, de la categoría del segmento (' + q3.category + ')');
+  const sc0 = (await st()).teams[0].score;
+  await P.waitForSelector('.answer-status.late', { timeout: 30000 });
+  check(/Tiempo agotado · sin respuesta/.test(await P.locator('.answer-status.late').innerText()), 'al acabar los 20 s sin responder: "Tiempo agotado · sin respuesta"');
+  await backToWheel();
+  check((await st()).teams[0].score === sc0, 'sin respuesta = 0 puntos');
 
-  console.log('\n7. Final (puntaje revelado)');
-  await spin(null);
-  if (await P.locator('[data-action="bonus"]').count()) await P.click('[data-action="bonus"]');
-  else { await P.click('[data-action="show"]'); await P.click('[data-action="close"]'); }
+  console.log('\n6. Final (puntaje revelado)');
+  for (let r = 4; r <= 5; r++) {
+    await spin(null);
+    await P.click('[data-action="show"]'); await P.click('[data-action="close"]');
+    if (r < 5) await backToWheel();
+  }
   await P.waitForSelector('#stage-gameover:not(.hidden)', { timeout: 30000 });
   check(/PUNTOS/.test(await P.locator('.winner-score').innerText()), 'ganador y puntuación final: ' + (await P.locator('.winner-name').innerText()) + ' — ' + (await P.locator('.winner-score').innerText()));
   check(await P.locator('#stage-gameover .rank-row').count() === 5 && /acierto/.test(await P.locator('#stage-gameover .rank-row').first().innerText()), 'clasificación completa con puntos y aciertos');
   check(/pts/.test(await P.locator('#g-right').innerText()), 'al final sí se muestra el puntaje del equipo');
 
-  console.log('\n8. Preview no toca Supabase');
+  console.log('\n7. Preview no toca Supabase');
   check(backendCalls.length === 0, 'cero llamadas a Supabase (' + backendCalls.length + ')');
   check((await bridge.db.admin.query('select count(*)::int n from public.rooms')).rows[0].n === 0, 'no se creó ninguna sala real');
 
-  console.log('\n9. Teléfono');
+  console.log('\n8. Teléfono');
   const phone = await newPage({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   check(!(await phone.locator('#btn-create').isVisible()) && await phone.locator('#btn-join').isVisible(), 'en el teléfono solo aparece "Unirse a una sala"');
   check(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'sin desbordamiento horizontal en el inicio');

@@ -19,7 +19,7 @@
     LOBBY: ['WAITING'],
     WAITING: ['SPINNING'],
     SPINNING: ['CATEGORY_SELECTED'],
-    CATEGORY_SELECTED: ['QUESTION_ACTIVE', 'NEXT_ROUND', 'GAME_OVER'],   // BONUS: salta la pregunta
+    CATEGORY_SELECTED: ['QUESTION_ACTIVE'],
     QUESTION_ACTIVE: ['ANSWER_LOCKED'],
     ANSWER_LOCKED: ['NEXT_ROUND', 'GAME_OVER', 'RESULTS'],   // los puntos se guardan sin mostrarse
     // RESULTS y LEADERBOARD ya no se usan entre rondas: el marcador solo aparece al final
@@ -41,7 +41,7 @@
       currentRound: 1,
       totalRounds: totalRounds,
       teams: [],               // { id, name, score, correct, isBot, lastSeen, connected }
-      wheel: [],               // segmentos que quedan: { c: categoría | 'BONUS', q: id de pregunta (privado) }
+      wheel: [],               // segmentos que quedan: { c: categoría, q: id de pregunta (privado) }
       wheelRotation: 0,        // grados acumulados de la ruleta
       spin: null,              // { id, categoryIndex (índice del segmento), rotation, durationMs }
       currentCategory: null,   // id de categoría
