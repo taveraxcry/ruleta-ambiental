@@ -10,24 +10,33 @@
   const TAU = Math.PI * 2;
   const SETTLE_MS = 520;   // rebote final: la aguja "engancha" el último perno
 
-  /* Curva cúbica de Bézier (como en CSS): arranque suave y frenado largo, como una ruleta real. */
-  function bezier(x1, y1, x2, y2) {
-    const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
-    const cy = 3 * y1, by = 3 * (y2 - y1) - cy, ay = 1 - cy - by;
-    const sx = function (t) { return ((ax * t + bx) * t + cx) * t; };
-    const sy = function (t) { return ((ay * t + by) * t + cy) * t; };
-    const dx = function (t) { return (3 * ax * t + 2 * bx) * t + cx; };
-    return function (x) {
-      let t = x;
-      for (let i = 0; i < 8; i++) {
-        const err = sx(t) - x, d = dx(t);
-        if (Math.abs(err) < 1e-6 || Math.abs(d) < 1e-6) break;
-        t -= err / d;
-      }
-      return sy(Math.max(0, Math.min(1, t)));
+  /* Perfil del giro (fracciones de la duración):
+     1. impulso: la ruleta retrocede unos grados, como cuando se toma impulso con la mano;
+     2. arranque: acelera poco a poco y luego se dispara;
+     3. frenado: larga desaceleración por fricción hasta detenerse.
+     Se integra la velocidad para obtener la posición normalizada 0→1 (tabla precalculada). */
+  const WIND = 0.06, ACCEL = 0.17, BACK_DEG = 7;
+  function makeProfile(totalDeg) {
+    const N = 900, dt = 1 / N;
+    const vel = function (t, k) {
+      if (t < WIND) return -k * Math.sin(Math.PI * t / WIND);
+      if (t < WIND + ACCEL) { const u = (t - WIND) / ACCEL; return u * u * (1.6 - 0.6 * u); }   // lento → rápido
+      const w = (t - WIND - ACCEL) / (1 - WIND - ACCEL);
+      return Math.pow(1 - w, 2.3);
+    };
+    let fwd = 0;
+    for (let i = 0; i < N; i++) { const t = (i + 0.5) * dt; if (t >= WIND) fwd += vel(t, 0) * dt; }
+    const backArea = WIND * 2 / Math.PI;
+    const k = BACK_DEG * fwd / ((Math.max(totalDeg, 90) + BACK_DEG) * backArea);
+    const cum = new Float64Array(N + 1);
+    for (let i = 0; i < N; i++) cum[i + 1] = cum[i] + vel((i + 0.5) * dt, k) * dt;
+    const total = cum[N];
+    return function (p) {
+      const x = Math.max(0, Math.min(1, p)) * N, i = Math.floor(x);
+      if (i >= N) return 1;
+      return (cum[i] + (cum[i + 1] - cum[i]) * (x - i)) / total;
     };
   }
-  const ease = bezier(0.16, 0.22, 0.06, 1);
 
   function shade(hex, amt) {
     const n = parseInt(hex.slice(1), 16);
@@ -37,7 +46,7 @@
 
   function segInfo(seg) {
     if (seg.c === 'BONUS') return R.BONUS;
-    return R.CATEGORIES.find(function (c) { return c.id === seg.c; }) || { id: seg.c, name: seg.c, color: '#2fd4c0' };
+    return R.CATEGORIES.find(function (c) { return c.id === seg.c; }) || { id: seg.c, name: seg.c, color: '#4caf50' };
   }
 
   function Wheel(opts) {
@@ -76,6 +85,16 @@
     }
   };
 
+  /* La aguja no cae siempre en el centro del segmento (movimiento natural): el recuadro se gira para
+     quedar exactamente sobre el segmento ganador. */
+  Wheel.prototype.alignHighlight = function (spin) {
+    if (!this.highlight || !spin || !this.segments.length) return;
+    const segDeg = 360 / this.segments.length;
+    let d = (spin.categoryIndex * segDeg + segDeg / 2 + spin.rotation) % 360;
+    if (d > 180) d -= 360;
+    this.highlight.ownerSVGElement.style.transform = 'rotate(' + d.toFixed(3) + 'deg)';
+  };
+
   Wheel.prototype.updateHighlight = function () {
     if (!this.highlight || !this.segments.length) return;
     const half = Math.PI / this.segments.length, rr = 43.6;
@@ -103,16 +122,16 @@
 
     // Aro exterior: metal oscuro con biseles
     let g = ctx.createRadialGradient(cx, cy, Rt, cx, cy, Rb);
-    g.addColorStop(0, '#061615'); g.addColorStop(0.18, '#1c4a44'); g.addColorStop(0.45, '#0e2f2c');
-    g.addColorStop(0.72, '#2a6a61'); g.addColorStop(0.9, '#0d2826'); g.addColorStop(1, '#030b0b');
+    g.addColorStop(0, '#07140a'); g.addColorStop(0.18, '#1f4a27'); g.addColorStop(0.45, '#10301a');
+    g.addColorStop(0.72, '#2f6b3a'); g.addColorStop(0.9, '#0e2a17'); g.addColorStop(1, '#030a05');
     ctx.beginPath(); ctx.arc(cx, cy, Rb, 0, TAU); ctx.fillStyle = g; ctx.fill();
-    ctx.lineWidth = r * 0.005; ctx.strokeStyle = 'rgba(190,255,235,.35)'; ctx.stroke();
+    ctx.lineWidth = r * 0.005; ctx.strokeStyle = 'rgba(205,250,180,.35)'; ctx.stroke();
     // Marcas finas del dial
     ctx.save(); ctx.translate(cx, cy);
     for (let i = 0; i < 120; i++) {
       ctx.rotate(TAU / 120);
       ctx.beginPath(); ctx.moveTo(0, -Rb * 0.985); ctx.lineTo(0, -Rb * (i % 5 === 0 ? 0.962 : 0.972));
-      ctx.strokeStyle = 'rgba(190,255,235,' + (i % 5 === 0 ? .32 : .14) + ')'; ctx.lineWidth = r * 0.0035; ctx.stroke();
+      ctx.strokeStyle = 'rgba(205,250,180,' + (i % 5 === 0 ? .32 : .14) + ')'; ctx.lineWidth = r * 0.0035; ctx.stroke();
     }
     ctx.restore();
     ctx.beginPath(); ctx.arc(cx, cy, Rt, 0, TAU); ctx.lineWidth = r * 0.006; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.stroke();
@@ -157,7 +176,7 @@
       const x0 = cx + Math.cos(a) * Ri, y0 = cy + Math.sin(a) * Ri, x1 = cx + Math.cos(a) * Rs, y1 = cy + Math.sin(a) * Rs;
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = r * 0.011; ctx.stroke();
       const sg = ctx.createLinearGradient(x0, y0, x1, y1);
-      sg.addColorStop(0, 'rgba(220,255,245,.35)'); sg.addColorStop(1, 'rgba(255,255,255,.85)');
+      sg.addColorStop(0, 'rgba(225,250,215,.35)'); sg.addColorStop(1, 'rgba(255,255,255,.85)');
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.strokeStyle = sg; ctx.lineWidth = r * 0.0045; ctx.stroke();
     }
     ctx.beginPath(); ctx.arc(cx, cy, Rs, 0, TAU); ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = r * 0.006; ctx.stroke();
@@ -178,47 +197,49 @@
 
     // Anillo central metálico con muescas
     g = ctx.createRadialGradient(cx, cy, Ri * 0.9, cx, cy, Ri * 1.22);
-    g.addColorStop(0, '#0a2220'); g.addColorStop(0.5, '#2b6b62'); g.addColorStop(1, '#071817');
+    g.addColorStop(0, '#0b2412'); g.addColorStop(0.5, '#2f6a3a'); g.addColorStop(1, '#071509');
     ctx.beginPath(); ctx.arc(cx, cy, Ri * 1.22, 0, TAU); ctx.fillStyle = g; ctx.fill();
     for (let i = 0; i < n; i++) {
       const a = start + (i + 0.5) * seg;
       ctx.beginPath(); ctx.arc(cx + Math.cos(a) * Ri * 1.1, cy + Math.sin(a) * Ri * 1.1, r * 0.006, 0, TAU);
-      ctx.fillStyle = 'rgba(190,255,235,.45)'; ctx.fill();
+      ctx.fillStyle = 'rgba(205,250,180,.45)'; ctx.fill();
     }
 
-    // Etiquetas radiales, ajustadas al ancho y al alto disponibles
-    const xEnd = Rs - r * 0.05;
+    // Etiquetas radiales con UN SOLO tamaño: el mayor con el que todos los nombres caben completos
+    const xEnd = Rs - r * 0.055;
+    const labelOf = function (sg) { return sg.c === 'BONUS' ? '★ BONUS' : segInfo(sg).name; };
+    const font = function (sz) { ctx.font = '700 ' + sz + 'px Montserrat, system-ui, sans-serif'; if ('letterSpacing' in ctx) ctx.letterSpacing = (sz * 0.05) + 'px'; };
+    const fits = function (label, sz) {
+      font(sz);
+      const innerX = xEnd - ctx.measureText(label).width;
+      return innerX > Ri * 1.32 && sz * 1.12 < innerX * seg;   // cabe a lo largo y entre los separadores
+    };
+    let size = r * 0.062;
+    const labels = segs.map(labelOf).filter(function (l, i, a) { return a.indexOf(l) === i; });
+    while (size > r * 0.025 && !labels.every(function (l) { return fits(l, size); })) size *= 0.97;
     segs.forEach(function (sg, i) {
-      const info = segInfo(sg);
       const bonus = sg.c === 'BONUS';
-      const label = bonus ? '★ BONUS' : info.name;
       const mid = start + i * seg + seg / 2;
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(mid);
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
-      let size = r * 0.058;
-      const font = function (sz) { ctx.font = '800 ' + sz + 'px Montserrat, system-ui, sans-serif'; if ('letterSpacing' in ctx) ctx.letterSpacing = (sz * 0.06) + 'px'; };
       font(size);
-      for (let k = 0; k < 60; k++) {
-        const w = ctx.measureText(label).width;
-        const innerX = xEnd - w;
-        const fitsLen = innerX > Ri * 1.3;
-        const fitsHeight = size < innerX * seg * 0.62;
-        if (fitsLen && fitsHeight) break;
-        size *= 0.95; font(size);
-      }
-      ctx.shadowColor = bonus ? 'rgba(255,240,200,.5)' : 'rgba(0,0,0,.5)';
-      ctx.shadowBlur = r * 0.01; ctx.shadowOffsetY = r * 0.003;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(1, size * 0.11);
+      ctx.strokeStyle = bonus ? 'rgba(255,245,215,.55)' : 'rgba(0,0,0,.28)';   // contorno suave: nitidez sobre cualquier color
+      ctx.shadowColor = bonus ? 'rgba(255,240,200,.4)' : 'rgba(0,0,0,.45)';
+      ctx.shadowBlur = r * 0.008; ctx.shadowOffsetY = r * 0.0025;
       ctx.fillStyle = bonus ? '#3b2400' : '#ffffff';
+      const y = bonus ? -size * 0.34 : 0;
+      ctx.strokeText(labelOf(sg), xEnd, y);
+      ctx.shadowColor = 'transparent';
+      ctx.fillText(labelOf(sg), xEnd, y);
       if (bonus) {
-        ctx.fillText(label, xEnd, -size * 0.32);
-        const s2 = size * 0.62;
+        const s2 = size * 0.6;
         ctx.font = '800 ' + s2 + 'px Montserrat, system-ui, sans-serif';
-        ctx.fillText('+' + R.CONFIG.BONUS_POINTS + ' PTS', xEnd, size * 0.62);
-      } else {
-        ctx.fillText(label, xEnd, 0);
+        ctx.fillText('+' + R.CONFIG.BONUS_POINTS + ' PTS', xEnd, size * 0.64);
       }
       ctx.restore();
     });
@@ -250,6 +271,7 @@
     this.wrap.classList.toggle('landed', state.phase === 'CATEGORY_SELECTED' && !this.anim);
     this.wrap.classList.toggle('spinning', !!this.anim);
     this.wrap.classList.toggle('is-bonus', state.phase === 'CATEGORY_SELECTED' && state.currentCategory === 'BONUS');
+    if (state.phase === 'CATEGORY_SELECTED' && !this.anim) this.alignHighlight(spin);
     if (state.phase === 'SPINNING' && spin && spin.id !== this.appliedSpinId) {
       this.appliedSpinId = spin.id;
       this.startSpin(spin, nowFn);
@@ -265,12 +287,13 @@
     const to = spin.rotation;
     const n = Math.max(1, this.segments.length);
     const segDeg = 360 / n;
-    let lastIdx = Math.floor(from / segDeg);
+    let lastIdx = Math.floor(from / segDeg);   // (los cruces se detectan en ambos sentidos)
     if (nowFn() - spin.id >= spin.durationMs + SETTLE_MS) { this.setAngle(to); return; }   // se unió tarde
 
     this.wrap.classList.add('spinning');
     this.wrap.classList.remove('landed');
     let prevA = from, prevT = performance.now();
+    const ease = makeProfile(to - from);
     const step = function () {
       const el = nowFn() - spin.id;
       const p = Math.min(1, Math.max(0, el / spin.durationMs));
@@ -294,6 +317,7 @@
         self.anim = null;
         self.setAngle(to);
         self.wrap.classList.remove('spinning');
+        self.alignHighlight(spin);
         self.wrap.classList.add('landed');
         if (R.Sound) R.Sound.select();
         if (navigator.vibrate) { try { navigator.vibrate(25); } catch (e) { /* noop */ } }

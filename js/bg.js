@@ -27,9 +27,9 @@
       const small = W < 700;
       const base = Math.max(W, 600);
       loops = [   // tres circuitos: recolección, recuperación y reintegro
-        { cx: W * 0.18, cy: H * 0.8, rx: base * 0.34, ry: H * 0.22, rot: -0.35, speed: 0.045, hue: 160 },
-        { cx: W * 0.86, cy: H * 0.2, rx: base * 0.3, ry: H * 0.2, rot: 0.42, speed: -0.035, hue: 190 },
-        { cx: W * 0.55, cy: H * 0.55, rx: base * 0.48, ry: H * 0.34, rot: 0.08, speed: 0.025, hue: 140 }
+        { cx: W * 0.18, cy: H * 0.8, rx: base * 0.34, ry: H * 0.22, rot: -0.35, speed: 0.045, hue: 105 },
+        { cx: W * 0.86, cy: H * 0.2, rx: base * 0.3, ry: H * 0.2, rot: 0.42, speed: -0.035, hue: 130 },
+        { cx: W * 0.55, cy: H * 0.55, rx: base * 0.48, ry: H * 0.34, rot: 0.08, speed: 0.025, hue: 90 }
       ];
       movers = [];
       loops.forEach(function (l, li) {
@@ -64,8 +64,8 @@
     /* ---- Figuras ---- */
     function leaf(s) {
       ctx.beginPath(); ctx.moveTo(0, -s); ctx.quadraticCurveTo(s * 0.85, 0, 0, s); ctx.quadraticCurveTo(-s * 0.85, 0, 0, -s);
-      ctx.fillStyle = '#7be0a8'; ctx.fill();
-      ctx.strokeStyle = 'rgba(4,30,26,.6)'; ctx.lineWidth = 0.8;
+      ctx.fillStyle = '#8bd36a'; ctx.fill();
+      ctx.strokeStyle = 'rgba(10,30,10,.6)'; ctx.lineWidth = 0.8;
       ctx.beginPath(); ctx.moveTo(0, -s * 0.8); ctx.lineTo(0, s * 0.8); ctx.stroke();
     }
     function arrowArc(rad, a0, a1, w) {   // arco con punta de flecha (sentido horario)
@@ -78,11 +78,11 @@
       ctx.closePath(); ctx.fill();
     }
     function recycle(s) {   // tres flechas que se persiguen
-      ctx.strokeStyle = '#5ef0bd'; ctx.fillStyle = '#5ef0bd';
+      ctx.strokeStyle = '#7ed957'; ctx.fillStyle = '#7ed957';
       for (let i = 0; i < 3; i++) { const a = i * (Math.PI * 2 / 3); arrowArc(s, a + 0.25, a + 1.75, s * 0.2); }
     }
     function returnArrow(s) {   // flecha de retorno (devolución)
-      ctx.strokeStyle = '#47c8f5'; ctx.fillStyle = '#47c8f5';
+      ctx.strokeStyle = '#a5d65a'; ctx.fillStyle = '#a5d65a';
       arrowArc(s, Math.PI * 0.15, Math.PI * 1.75, s * 0.2);
     }
     function box(s) {   // paquete isométrico con cinta
@@ -97,13 +97,13 @@
       ctx.beginPath(); ctx.moveTo(-s * 0.5, -h * 0.72); ctx.lineTo(s * 0.5, -h * 0.17); ctx.stroke();
     }
     function truck(s) {   // camión de recolección (mirando a la derecha)
-      ctx.fillStyle = '#5ef0bd';
+      ctx.fillStyle = '#7ed957';
       ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-s * 1.6, -s * 0.9, s * 2, s * 1.2, s * 0.15) : ctx.rect(-s * 1.6, -s * 0.9, s * 2, s * 1.2); ctx.fill();
       ctx.beginPath(); ctx.moveTo(s * 0.5, -s * 0.6); ctx.lineTo(s * 1.0, -s * 0.6); ctx.lineTo(s * 1.35, -s * 0.15); ctx.lineTo(s * 1.35, s * 0.3); ctx.lineTo(s * 0.5, s * 0.3); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = 'rgba(4,30,26,.75)';
+      ctx.fillStyle = 'rgba(10,30,10,.75)';
       ctx.fillRect(s * 0.65, -s * 0.45, s * 0.35, s * 0.3);
       ctx.beginPath(); ctx.arc(-s * 0.95, s * 0.38, s * 0.28, 0, Math.PI * 2); ctx.arc(s * 0.85, s * 0.38, s * 0.28, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(4,30,26,.55)'; ctx.lineWidth = s * 0.12;   // símbolo de reciclaje en la carga
+      ctx.strokeStyle = 'rgba(10,30,10,.55)'; ctx.lineWidth = s * 0.12;   // símbolo de reciclaje en la carga
       ctx.beginPath(); ctx.arc(-s * 0.6, -s * 0.3, s * 0.3, 0.3, Math.PI * 1.7); ctx.stroke();
     }
 
@@ -158,7 +158,7 @@
         d.y -= d.vy * dt; d.x += d.vx * dt;
         if (d.y < -5) { d.y = H + 5; d.x = rand(0, W); }
         ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(190,255,230,' + d.a * (0.6 + 0.4 * Math.sin(t + d.x)) + ')'; ctx.fill();
+        ctx.fillStyle = 'rgba(205,250,180,' + d.a * (0.6 + 0.4 * Math.sin(t + d.x)) + ')'; ctx.fill();
       });
 
       // Hojas, reciclaje, flechas de retorno y paquetes que flotan
@@ -181,7 +181,7 @@
       pulses = pulses.filter(function (p) {
         p.r += 38 * dt;
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(94,234,212,' + Math.max(0, 0.12 * (1 - p.r / 220)) + ')';
+        ctx.strokeStyle = 'rgba(126,217,87,' + Math.max(0, 0.12 * (1 - p.r / 220)) + ')';
         ctx.lineWidth = 1.2; ctx.stroke();
         return p.r < 220;
       });

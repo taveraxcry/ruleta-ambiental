@@ -341,9 +341,10 @@ begin
   select wheel_qids[v_idx + 1] into v_qid from public.room_private where room_code = r.code for update;
 
   v_seg := 360.0 / v_n;
-  v_jitter := (random() - 0.5) * v_seg * 0.7;   -- aterriza dentro del segmento, no siempre al centro
+  -- La aguja se detiene a un lado del centro (nunca encima del nombre), siempre dentro del segmento
+  v_jitter := (case when random() < 0.5 then -1 else 1 end) * v_seg * (0.22 + random() * 0.16);
   v_landing := mod(mod(360 - (v_idx * v_seg + v_seg / 2 + v_jitter), 360) + 360, 360);
-  v_rotation := floor(r.wheel_rotation / 360) * 360 + (5 + floor(random() * 3)) * 360 + v_landing;
+  v_rotation := floor(r.wheel_rotation / 360) * 360 + (7 + floor(random() * 3)) * 360 + v_landing;
 
   update public.room_private set pending_category = v_cat, question_id = nullif(v_qid, 0) where room_code = r.code;
   update public.rooms set

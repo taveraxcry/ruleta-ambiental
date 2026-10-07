@@ -174,9 +174,10 @@
 
       const seg = s.wheel[index];
       const segDeg = 360 / n;
-      const jitter = (Math.random() - 0.5) * segDeg * 0.7;          // aterriza dentro del segmento, no siempre al centro
+      // La aguja se detiene a un lado del centro (nunca encima del nombre), siempre dentro del segmento
+      const jitter = (Math.random() < 0.5 ? -1 : 1) * segDeg * (0.22 + Math.random() * 0.16);
       const landing = (360 - (index * segDeg + segDeg / 2 + jitter) + 360) % 360;
-      const extraTurns = 5 + Math.floor(Math.random() * 3);
+      const extraTurns = 7 + Math.floor(Math.random() * 3);   // giro rápido: 7 a 9 vueltas
       const rotation = Math.floor(s.wheelRotation / 360) * 360 + extraTurns * 360 + landing;
 
       s.currentCategory = seg.c;

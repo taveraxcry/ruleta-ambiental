@@ -7,7 +7,7 @@
   const P = R.PHASES;
   const CFG = R.CONFIG;
   const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
-  const AVATAR_COLORS = ['#5ef0bd', '#47c8f5', '#f1c68a', '#b49cff', '#8be07a', '#ff9f8a', '#7fe3ff', '#ffd66b'];
+  const AVATAR_COLORS = ['#7ed957', '#a5d65a', '#f1c68a', '#b49cff', '#8be07a', '#ff9f8a', '#c8ec7a', '#ffd66b'];
   const SESSION_KEY = 'ruleta-team-session';
   const SB_SESSION_KEY = 'ruleta-sb-team';
   const PREVIEW_ID = 'preview-me';
@@ -19,7 +19,7 @@
     });
   };
   const icon = function (id, cls) { return '<svg' + (cls ? ' class="' + cls + '"' : '') + ' aria-hidden="true"><use href="#' + id + '"/></svg>'; };
-  const catById = function (id) { return id === 'BONUS' ? R.BONUS : R.CATEGORIES.find(function (c) { return c.id === id; }) || { id: id, name: id, color: '#2fd4c0', topic: '' }; };
+  const catById = function (id) { return id === 'BONUS' ? R.BONUS : R.CATEGORIES.find(function (c) { return c.id === id; }) || { id: id, name: id, color: '#4caf50', topic: '' }; };
 
   const transport = new R.LocalTransport(CFG.CHANNEL_NAME);
   const app = { role: null, host: null, client: null, state: null, wheel: null, questionKey: '', revealKey: '', lastStage: '', sb: false };
@@ -34,6 +34,23 @@
   }
   function nowMs() { return (app.role === 'team' ? app.client : app.host).hostNow(); }
   function myAnswer() { return canAnswer() && app.client && app.client.myAnswer ? app.client.myAnswer.index : null; }
+
+  /* ---------- Pantalla de carga (caja que circula por el circuito de retorno) ---------- */
+  let loaderTimer = null;
+  function showLoader(text) {
+    clearTimeout(loaderTimer);
+    $('loader-text').textContent = text;
+    loaderTimer = setTimeout(function () { $('loader').hidden = false; }, 120);   // no aparece en cargas instantáneas
+  }
+  function hideLoader() { clearTimeout(loaderTimer); $('loader').hidden = true; }
+
+  /* Reduce la letra hasta que el texto quepa completo en su caja (nombres largos como GOTHENBURG). */
+  function fitText(el) {
+    if (!el || !el.clientWidth) return;
+    el.style.fontSize = '';
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth + 1 && size > 14) { size -= 1; el.style.fontSize = size + 'px'; }
+  }
 
   /* ---------- Teléfono ---------- */
   function vibrate(pattern) { try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* no soportado */ } }
@@ -231,6 +248,7 @@
           '<span class="cat-topic">' + esc(cat.topic) + '</span>';
       reveal.classList.remove('hidden');
       $('stage-wheel').classList.add('has-reveal');
+      fitText(reveal.querySelector('.cat-name'));
       // En pantallas bajas, asegura que la categoría quede a la vista
       setTimeout(function () {
         if (reveal.getBoundingClientRect().bottom > window.innerHeight) reveal.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -361,7 +379,7 @@
     stage.dataset.rendered = 'yes';
     stage.dataset.sig = list + '|' + winnerText + '|' + top;
     let confetti = '';
-    const colors = ['#5ef0bd', '#47c8f5', '#ffd66b', '#8be07a', '#f1c68a'];
+    const colors = ['#7ed957', '#a5d65a', '#ffd66b', '#8be07a', '#f1c68a'];
     for (let i = 0; i < 26; i++) {
       confetti += '<i style="left:' + Math.round(Math.random() * 100) + '%;background:' + colors[i % colors.length] +
         ';animation-duration:' + (2.4 + Math.random() * 2.2).toFixed(2) + 's;animation-delay:' + (Math.random() * 1.2).toFixed(2) + 's"></i>';
@@ -462,6 +480,7 @@
     const btn = $('btn-create');
     btn.disabled = true;
     app.role = 'host';
+    showLoader('Creando la sala…');
     try {
       if (app.sb) {
         app.host = new R.SbHost(CFG.TOTAL_ROUNDS);
@@ -472,6 +491,7 @@
         app.host = new R.HostGame(transport, CFG.TOTAL_ROUNDS);
       }
     } catch (e) {
+      hideLoader();
       app.role = null; app.host = null;
       showToast(e.message || 'No se pudo crear la sala.');
       btn.disabled = false;
@@ -479,15 +499,18 @@
     }
     app.host.subscribe(onState);
     if (!app.sb) app.host.publish();
+    hideLoader();
     keepAwake();
   }
 
   async function resumeHost() {
     const host = new R.SbHost(CFG.TOTAL_ROUNDS);
     wireBackend(host);
+    if (R.SbHost.savedRoom()) showLoader('Recuperando la partida…');
     try {
-      if (await host.resume()) { app.role = 'host'; app.host = host; host.subscribe(onState); return true; }
+      if (await host.resume()) { app.role = 'host'; app.host = host; host.subscribe(onState); hideLoader(); return true; }
     } catch (e) { /* sin conexión: se queda en el inicio */ }
+    hideLoader();
     return false;
   }
 
@@ -534,7 +557,9 @@
     const client = app.sb ? new R.SbClient(code, name) : new R.ClientGame(transport, code, teamId, name);
     client.onNotice = function (msg) { showToast(msg); };
     if (app.sb) wireBackend(client);
+    showLoader(silent ? 'Volviendo a tu sala…' : 'Entrando a la sala…');
     const res = await client.join();
+    hideLoader();
     if (!res.ok) { if (!silent) showJoinError(res.error); return false; }
     app.role = 'team';
     app.client = client;
@@ -685,6 +710,7 @@
 
     // Al volver a la app (pantalla desbloqueada, pestaña activa) se pide de nuevo mantenerla encendida
     document.addEventListener('visibilitychange', function () { if (!document.hidden && app.role) keepAwake(); });
+    window.addEventListener('resize', function () { fitText(document.querySelector('#category-reveal:not(.hidden) .cat-name')); });
 
     // Recuperación de sesión tras recargar la página (anfitrión o equipo)
     (async function () {
