@@ -3,6 +3,12 @@ const assert = require('assert');
 const crypto = require('crypto');
 const { startDb } = require('./pgtest');
 
+// Mismo orden y estado que R.CATEGORIES (js/config.js)
+global.window = {};
+eval(require('fs').readFileSync(require('path').join(__dirname, '../js/config.js'), 'utf8'));
+const CATS = window.Ruleta.CATEGORIES.map((c) => c.id);
+const DISABLED = window.Ruleta.CATEGORIES.filter((c) => !c.enabled).map((c) => c.id);
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let passed = 0;
 async function test(name, fn) {
@@ -102,11 +108,11 @@ async function rejects(promise, re, label) {
   });
   await test('todos leen la MISMA ruleta; el giro cae en el segmento de la categoría', async () => {
     await rpc(host, 'spin', code);
-    const cats = ['KYOTO','ROTTERDAM','ESCAZU','BASILEA','CITES','RAMSAR','PARIS','MONTREAL','GINEBRA','GOTHENBURG','BRUNDTLAND','EPI'];
+    const cats = CATS;
     const [h, a, b] = await Promise.all([room(host, code), room(teams.A, code), room(teams.B, code)]);
     assert.deepStrictEqual(h.spin, a.spin); assert.deepStrictEqual(a.spin, b.spin);
     assert.strictEqual(h.phase, 'SPINNING');
-    const idx = Math.floor(((360 - (h.spin.rotation % 360)) % 360) / 30);
+    const idx = Math.floor(((360 - (h.spin.rotation % 360)) % 360) / (360 / CATS.length));
     assert.strictEqual(idx, h.spin.categoryIndex);
     await rejects(rpc(host, 'reveal_category', code), /girando/, 'revelar antes de tiempo');
     await sleep(5000);
@@ -120,7 +126,7 @@ async function rejects(promise, re, label) {
     await rpc(host, 'show_question', code);
     const [a, b] = await Promise.all([room(teams.A, code), room(teams.B, code)]);
     assert.deepStrictEqual(a.question, b.question);
-    assert.ok(!JSON.stringify(a).includes('correct'), 'la sala filtra la respuesta correcta');
+    assert.ok(!/"correct(_answer|Answer)"/.test(JSON.stringify(a)), 'la sala filtra la respuesta correcta');
     question = a;
     assert.strictEqual(new Date(a.question_deadline) - new Date(a.question_started_at), 20000);
   });
@@ -205,6 +211,30 @@ async function rejects(promise, re, label) {
   await test('el anfitrión puede cerrar la sala (se borran equipos)', async () => {
     await rpc(host, 'close_room', code);
     assert.strictEqual((await q(teams.A, 'select * from public.rooms where code=$1', [code])).rowCount, 0);
+  });
+
+  console.log('\nSelección de preguntas (20 preguntas definitivas)');
+  await test('la ruleta del servidor tiene las mismas categorías y orden que el frontend', async () => {
+    const r = (await db.admin.query('select public._wheel_categories() c')).rows[0].c;
+    assert.deepStrictEqual(r, CATS);
+  });
+  await test('el banco tiene 20 preguntas y solo categorías de la ruleta', async () => {
+    const r = (await db.admin.query('select count(*)::int n, bool_and(category = any(public._wheel_categories())) ok from public.questions')).rows[0];
+    assert.strictEqual(r.n, 20); assert.strictEqual(r.ok, true);
+  });
+  await test('20 giros seguidos: sin repetir, sin categorías deshabilitadas, pregunta de la categoría elegida', async () => {
+    const used = [];
+    for (let i = 0; i < 20; i++) {
+      const p = (await db.admin.query('select * from public._pick_question($1)', [used])).rows[0];
+      assert.strictEqual(p.o_reset, false, 'no debe reiniciar antes de agotar el banco');
+      assert.ok(!DISABLED.includes(p.o_category), 'salió una categoría deshabilitada: ' + p.o_category);
+      const qc = (await db.admin.query('select category from public.questions where id=$1', [p.o_question_id])).rows[0].category;
+      assert.strictEqual(qc, p.o_category);
+      assert.ok(!used.includes(p.o_question_id), 'pregunta repetida');
+      used.push(p.o_question_id);
+    }
+    const p = (await db.admin.query('select * from public._pick_question($1)', [used])).rows[0];
+    assert.strictEqual(p.o_reset, true, 'al agotar las 20 se reinicia el banco');
   });
 
   console.log('\nTabla de puntos (todos los tramos)');

@@ -2,75 +2,142 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#04130f">
   <title>Ruleta Ambiental</title>
-  <meta name="description" content="Concurso educativo de gestión ambiental y logística reversa.">
+  <meta name="description" content="Concurso educativo multijugador de Gestión Ambiental y Logística Reversa.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
-  <div id="bg" class="bg" aria-hidden="true"></div>
+  <!-- Iconos -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-eco" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#8ef5c4"/><stop offset="1" stop-color="#41c9f0"/>
+      </linearGradient>
+    </defs>
+    <symbol id="i-energy" viewBox="0 0 64 64">
+      <path d="M32 7a25 25 0 0 1 23.4 16.2" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M57.6 16.4l-1.7 8.4-8.1-2.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M32 57A25 25 0 0 1 8.6 40.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M6.4 47.6l1.7-8.4 8.1 2.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M19 44c0-15 10.5-24 27-24 0 16-9.4 25-25 25z" fill="currentColor" opacity=".22"/>
+      <path d="M19 44c0-15 10.5-24 27-24 0 16-9.4 25-25 25z" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round"/>
+      <path d="M35 23.5l-7.6 11.2h5.6l-3.4 9 9.2-12.4h-5.8z" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-enter" viewBox="0 0 24 24"><path d="M10 7l5 5-5 5M15 12H3M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.2a6.5 6.5 0 0 1 3.5 5.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z" fill="currentColor"/></symbol>
+  </svg>
+
+  <canvas id="bg-canvas" class="bg-canvas" aria-hidden="true"></canvas>
+  <div class="bg-glow" aria-hidden="true"><span></span><span></span><span></span></div>
+
   <div id="toast" class="toast hidden" role="status"></div>
   <div id="conn-banner" class="conn-banner hidden" role="status">Sin conexión. Reconectando…</div>
+  <div id="preview-badge" class="preview-badge hidden" role="note"><span class="pb-dot"></span>PREVIEW / DEMO — DATOS SIMULADOS</div>
 
   <!-- INICIO -->
   <section id="screen-home" class="screen center">
-    <div class="hero">
-      <div class="globe">🌎</div>
-      <h1>RULETA<br><span>AMBIENTAL</span></h1>
-      <p class="lead">Desafía tus conocimientos sobre gestión ambiental y logística reversa.</p>
+    <div class="home">
+      <div class="brand-mark" aria-hidden="true"><svg><use href="#i-energy"/></svg></div>
+      <p class="kicker">🌎 Concurso ambiental multijugador</p>
+      <h1 class="title">RULETA <span class="grad">AMBIENTAL</span></h1>
+      <p class="subtitle">Gestión Ambiental y Logística Reversa</p>
       <p id="mode-badge" class="mode-badge hidden"></p>
       <div class="home-actions">
-        <button id="btn-create" class="btn btn-primary btn-xl">CREAR SALA <small>Anfitrión / docente</small></button>
-        <button id="btn-join" class="btn btn-secondary btn-xl">UNIRSE A UNA SALA <small>Equipos</small></button>
+        <button id="btn-create" class="cta cta-primary" type="button">
+          <span class="cta-icon"><svg><use href="#i-plus"/></svg></span>
+          <span class="cta-text"><b>CREAR SALA</b><small>Anfitrión · desde el computador</small></span>
+        </button>
+        <button id="btn-join" class="cta cta-glass" type="button">
+          <span class="cta-icon"><svg><use href="#i-enter"/></svg></span>
+          <span class="cta-text"><b>UNIRSE A UNA SALA</b><small>Equipos · teléfono o computador</small></span>
+        </button>
+        <button id="btn-preview" class="cta cta-preview" type="button">
+          <span class="cta-icon"><svg><use href="#i-eye"/></svg></span>
+          <span class="cta-text"><b>PREVIEW / DEMO</b><small>Recorre el juego con datos simulados</small></span>
+          <span class="cta-tag">SIN SALA REAL</span>
+        </button>
       </div>
+      <ul class="home-facts" aria-label="Características">
+        <li><svg><use href="#i-clock"/></svg>20 s por pregunta</li>
+        <li><svg><use href="#i-bolt"/></svg>Corrección + velocidad</li>
+        <li><svg><use href="#i-users"/></svg>Un equipo, un dispositivo</li>
+      </ul>
     </div>
   </section>
 
   <!-- UNIRSE -->
   <section id="screen-join" class="screen center hidden">
-    <form id="join-form" class="card narrow" autocomplete="off" novalidate>
-      <h2 class="section-title">🌱 Unirse a una sala</h2>
+    <form id="join-form" class="glass card narrow" autocomplete="off" novalidate>
+      <button id="btn-join-back" type="button" class="link-back"><svg><use href="#i-back"/></svg>Volver</button>
+      <div class="card-head">
+        <span class="eyebrow">EQUIPOS</span>
+        <h2 class="section-title">Unirse a una sala</h2>
+        <p class="muted">Escribe el código que muestra el anfitrión y el nombre de tu equipo.</p>
+      </div>
       <label for="join-code">Código de sala</label>
-      <input id="join-code" class="input code-input" type="text" placeholder="ECO-7K4" maxlength="8" autocapitalize="characters" spellcheck="false">
+      <input id="join-code" class="input code-input" type="text" placeholder="ECO-7K4" maxlength="8" autocapitalize="characters" spellcheck="false" inputmode="text">
       <label for="join-name">Nombre de tu equipo</label>
-      <input id="join-name" class="input" type="text" placeholder="Ej: EcoTeam" maxlength="30" spellcheck="false">
+      <input id="join-name" class="input" type="text" placeholder="Ej: Green Force" maxlength="30" spellcheck="false">
       <p id="join-error" class="form-error hidden" role="alert"></p>
       <button id="join-submit" type="submit" class="btn btn-primary btn-xl">ENTRAR A LA SALA</button>
-      <button id="btn-join-back" type="button" class="btn btn-ghost">← Volver</button>
     </form>
   </section>
 
   <!-- SALA DEL ANFITRIÓN -->
   <section id="screen-host-lobby" class="screen center hidden">
-    <div class="card lobby">
-      <button type="button" class="btn btn-ghost back-btn" data-exit="host">← Volver al inicio</button>
-      <div class="brand-line">🌎 RULETA AMBIENTAL</div>
-      <span class="eyebrow">SALA</span>
-      <div id="host-code" class="room-code">ECO-000</div>
-      <p class="muted">Comparte este código con los equipos.</p>
-      <h3 class="sub-title">EQUIPOS CONECTADOS (<span id="host-count">0</span>)</h3>
-      <ul id="host-teams" class="team-list"></ul>
-      <div class="lobby-actions">
-        <button id="btn-start" class="btn btn-primary btn-xl" disabled>INICIAR PARTIDA</button>
-        <button id="btn-demo" class="btn btn-ghost">+ Añadir equipos de prueba</button>
+    <div class="lobby-grid">
+      <div class="glass card code-card">
+        <button type="button" class="link-back" data-exit="host"><svg><use href="#i-back"/></svg>Volver al inicio</button>
+        <div class="brand-line"><svg><use href="#i-energy"/></svg>RULETA AMBIENTAL</div>
+        <span class="eyebrow">CÓDIGO DE LA SALA</span>
+        <div id="host-code" class="room-code">ECO-000</div>
+        <p class="muted">Comparte este código con los equipos. Cada equipo entra desde <b>un solo dispositivo</b>.</p>
+        <ol class="steps">
+          <li><span>Los equipos abren la app y pulsan <b>Unirse a una sala</b>.</span></li>
+          <li><span>Escriben el código y el nombre de su equipo.</span></li>
+          <li><span>Cuando estén todos, pulsa <b>Iniciar partida</b>.</span></li>
+        </ol>
+      </div>
+      <div class="glass card teams-card">
+        <div class="teams-head">
+          <h3 class="sub-title">EQUIPOS CONECTADOS</h3>
+          <span class="count-pill"><span id="host-count">0</span></span>
+        </div>
+        <ul id="host-teams" class="team-list"></ul>
+        <div class="lobby-actions">
+          <button id="btn-start" class="btn btn-primary btn-xl" disabled>INICIAR PARTIDA</button>
+          <button id="btn-demo" class="btn btn-ghost">+ Añadir equipos de prueba</button>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- SALA DE ESPERA DEL EQUIPO -->
   <section id="screen-team-lobby" class="screen center hidden">
-    <div class="card lobby">
-      <button type="button" class="btn btn-ghost back-btn" data-exit="team">← Salir de la sala</button>
-      <div class="brand-line">🌎 SALA DE ESPERA</div>
-      <span class="eyebrow">CÓDIGO</span>
-      <div id="tl-code" class="room-code small">ECO-000</div>
-      <div class="me-box">
-        <span class="eyebrow">EQUIPO</span>
-        <strong id="tl-team"></strong>
-        <span class="status-ok"><span class="dot on"></span> Conectado</span>
+    <div class="glass card lobby">
+      <button type="button" class="link-back" data-exit="team"><svg><use href="#i-back"/></svg>Salir de la sala</button>
+      <div class="brand-line"><svg><use href="#i-energy"/></svg>SALA DE ESPERA</div>
+      <div class="wait-orb" aria-hidden="true"><span></span><span></span><svg><use href="#i-energy"/></svg></div>
+      <span class="eyebrow">TU EQUIPO</span>
+      <strong id="tl-team" class="me-name"></strong>
+      <div class="me-meta">
+        <span class="status-ok"><span class="dot on"></span>Conectado</span>
+        <span class="meta-sep"></span>
+        <span>Sala <b id="tl-code">ECO-000</b></span>
       </div>
       <h3 class="sub-title">EQUIPOS EN LA SALA</h3>
       <ul id="tl-teams" class="team-list"></ul>
@@ -80,21 +147,53 @@
 
   <!-- JUEGO -->
   <section id="screen-game" class="screen hidden">
-    <header class="game-header">
-      <div class="brand-mini"><button type="button" class="btn btn-ghost back-btn" data-exit="game" aria-label="Salir de la partida">← Salir</button><span class="brand-text">🌎 RULETA AMBIENTAL</span></div>
-      <div class="round-pill">Ronda <b id="g-round">1 / 10</b></div>
-      <div id="g-right" class="g-right"></div>
+    <header class="game-header glass">
+      <div class="gh-left">
+        <button type="button" class="icon-btn" data-exit="game" aria-label="Salir de la partida" title="Salir"><svg><use href="#i-back"/></svg></button>
+        <span class="brand-mini"><svg><use href="#i-energy"/></svg><span class="brand-text">RULETA AMBIENTAL</span></span>
+      </div>
+      <div class="gh-center">
+        <span id="g-round-label" class="round-label">RONDA</span>
+        <b id="g-round" class="round-value">1 / 10</b>
+        <span class="round-bar"><span id="g-progress"></span></span>
+      </div>
+      <div class="gh-right">
+        <div id="g-right" class="g-right"></div>
+        <button type="button" id="btn-sound" class="icon-btn" aria-label="Sonido activado" title="Sonido"><svg><use href="#i-sound"/></svg></button>
+      </div>
     </header>
 
     <main class="game-main">
       <div id="stage-wheel" class="stage">
-        <div class="wheel-wrap">
-          <div class="pointer" aria-hidden="true"></div>
-          <div id="wheel-rotor" class="wheel-rotor"><canvas id="wheel-canvas" aria-label="Ruleta de categorías"></canvas></div>
-          <div class="hub" aria-hidden="true">🌎</div>
+        <div id="wheel-wrap" class="wheel-wrap">
+          <div class="wheel-aura" aria-hidden="true"></div>
+          <div id="wheel-rotor" class="wheel-rotor"><canvas id="wheel-canvas" role="img" aria-label="Ruleta de categorías"></canvas></div>
+          <div class="wheel-gloss" aria-hidden="true"></div>
+          <svg class="wheel-highlight" viewBox="0 0 100 100" aria-hidden="true"><path id="wheel-highlight-path"/></svg>
+          <div class="hub" aria-hidden="true"><svg><use href="#i-energy"/></svg></div>
+          <div id="wheel-pointer" class="wheel-pointer" aria-hidden="true">
+            <svg viewBox="0 0 60 84">
+              <defs>
+                <linearGradient id="ptr-body" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#d9fff1"/><stop offset=".5" stop-color="#ffffff"/><stop offset="1" stop-color="#9fe9d2"/>
+                </linearGradient>
+                <radialGradient id="ptr-cap" cx=".35" cy=".3" r=".8">
+                  <stop offset="0" stop-color="#5ff2c4"/><stop offset=".6" stop-color="#14a88a"/><stop offset="1" stop-color="#0b5f52"/>
+                </radialGradient>
+              </defs>
+              <path d="M30 80 L14 30 A16 16 0 1 1 46 30 Z" fill="url(#ptr-body)" stroke="rgba(4,40,34,.35)" stroke-width="1.2"/>
+              <circle cx="30" cy="24" r="10" fill="url(#ptr-cap)" stroke="#ffffff" stroke-width="2"/>
+              <circle cx="27" cy="21" r="3" fill="rgba(255,255,255,.65)"/>
+            </svg>
+          </div>
         </div>
-        <div id="wheel-status" class="wheel-status" aria-live="polite"></div>
-        <div id="category-reveal" class="category-reveal hidden" aria-live="polite"></div>
+        <div class="wheel-side">
+          <div class="round-card glass">
+            <span id="wheel-round" class="eyebrow">RONDA 1</span>
+            <div id="wheel-status" class="wheel-status" aria-live="polite"></div>
+          </div>
+          <div id="category-reveal" class="category-reveal hidden" aria-live="polite"></div>
+        </div>
       </div>
 
       <div id="stage-question" class="stage hidden"></div>
@@ -109,13 +208,14 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/scoring.js"></script>
-  <script src="js/questions.js"></script>
   <script src="js/state.js"></script>
   <script src="js/transport.js"></script>
   <script src="js/host.js"></script>
   <script src="js/client.js"></script>
   <script src="js/supabase-config.js"></script>
   <script src="js/supabase-backend.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/bg.js"></script>
   <script src="js/wheel.js"></script>
   <script src="js/app.js"></script>
 </body>

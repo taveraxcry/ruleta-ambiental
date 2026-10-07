@@ -110,18 +110,25 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
     const opts = await everyone((p) => p.locator('.option .opt-text').allInnerTexts());
     check(allEqual(qs) && allEqual(opts), 'todos reciben exactamente la misma pregunta y opciones');
     const cats2 = await everyone((p) => text(p, '.cat-badge'));
-    check(allEqual(cats2), 'la pregunta pertenece a la categoría del giro');
     const row = await roomRow(code);
+    const qCat = (await bridge.db.admin.query('select category from public.questions where id=$1', [row.question.id])).rows[0].category;
+    check(allEqual(cats2) && qCat === row.current_category && !['ROTTERDAM', 'MONTREAL'].includes(qCat),
+      'la pregunta pertenece a la categoría del giro (' + qCat + ') y la categoría está habilitada');
     const startedAt = Date.parse(row.question_started_at);
     check(Date.parse(row.question_deadline) - startedAt === 20000, 'el servidor fijó 20 segundos de ventana');
     const timers = (await everyone((p) => text(p, '#timer-num'))).map(Number);
     check(Math.max(...timers) - Math.min(...timers) <= 1 && timers[0] >= 18, 'todos tienen el mismo cronómetro: ' + timers.join(', '));
     const html = await teams[0].content();
     check(!/correct_answer|correctAnswer/.test(html), 'la respuesta correcta no está en el HTML del equipo');
+    check(await teams[0].evaluate(() => !window.Ruleta.QUESTIONS), 'el teléfono del equipo nunca descarga el banco de preguntas con respuestas');
 
     const ok = await correctIndex(code);
     const wrong = (ok + 1) % opts[0].length;
-    const pick = (page, i) => page.locator('.option[data-index="' + i + '"]').click();
+    // Eco Team responde con mouse; los demás equipos con pantalla táctil
+    const pick = (page, i) => {
+      const opt = page.locator('button.option[data-index="' + i + '"]');
+      return page === A ? opt.click() : opt.tap();
+    };
     const waitUntil = async (ms) => { const d = startedAt + ms - Date.now(); if (d > 0) await sleep(d); };
 
     for (const step of plan.answers) {   // [{page, at(ms desde inicio), option:'ok'|'wrong'}]
@@ -130,6 +137,8 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
     }
     await A.locator('.answer-status.ok, .answer-status').first().waitFor();
     if (plan.checkLocks) {
+      check(await host.locator('#stage-question button.option').count() === 0 && await host.locator('#stage-question .option.readonly').count() > 0,
+        'en el computador del anfitrión las opciones son de solo lectura (los equipos responden)');
       check(/RESPUESTA REGISTRADA/.test(await text(A, '.answer-status')), 'el equipo ve "✓ RESPUESTA REGISTRADA"');
       check(await A.locator('.option:not([disabled])').count() === 0, 'tras responder, las opciones quedan bloqueadas');
       await A.locator('.option').nth(wrong === 0 ? 1 : 0).click({ force: true, timeout: 1000 }).catch(() => {});
@@ -180,8 +189,10 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
 
   await host.click('[data-action="board"]');
   await everyone((p) => visible(p, '#stage-leaderboard'));
-  const boards = await everyone((p) => rowsOf(p, '#stage-leaderboard .board tbody tr'));
-  check(allEqual(boards) && /EcoTeam/.test(boards[0][0]) && /100/.test(boards[0][0]), 'todos ven el mismo marcador (Eco Team lidera con 100)');
+  // Cada fila expone sus datos (posición|equipo|puntos de ronda|total): el diseño cambia entre móvil y computador
+  const boardOf = (p) => p.locator('#stage-leaderboard .board tbody tr').evaluateAll((trs) => trs.map((tr) => tr.dataset.row));
+  const boards = await everyone(boardOf);
+  check(allEqual(boards) && boards[0][0] === '1|Eco Team|+100|100', 'todos ven el mismo marcador (Eco Team lidera con 100)');
 
   await host.reload();
   await visible(host, '#stage-leaderboard');
@@ -203,8 +214,8 @@ const allEqual = (arr) => arr.every((x) => JSON.stringify(x) === JSON.stringify(
 
   await host.click('[data-action="board"]');
   await everyone((p) => visible(p, '#stage-leaderboard'));
-  const boards2 = await everyone((p) => rowsOf(p, '#stage-leaderboard .board tbody tr'));
-  check(allEqual(boards2), 'marcador acumulado idéntico en todos los dispositivos');
+  const boards2 = await everyone(boardOf);
+  check(allEqual(boards2), 'marcador acumulado idéntico en todos los dispositivos: ' + boards2[0].join(' · '));
   check(/FINALIZAR/.test(await text(host, '[data-action="next"]')), 'tras la última ronda el anfitrión ve "FINALIZAR PARTIDA"');
   await host.click('[data-action="next"]');
 

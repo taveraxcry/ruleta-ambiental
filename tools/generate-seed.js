@@ -12,8 +12,10 @@ const rows = window.Ruleta.QUESTIONS.map((x) =>
   `  (${x.id}, ${q(x.category)}, ${q(x.type)}, ${q(x.question)}, ${q(JSON.stringify(x.options))}::jsonb, ${q(x.context)}, ${q(x.explanation)}, ${x.correctAnswer})`
 );
 
-const sql = `-- Preguntas DEMO (generado por tools/generate-seed.js — no editar a mano).
--- Ejecutar después de schema.sql. Se puede repetir: actualiza las preguntas existentes.
+const ids = window.Ruleta.QUESTIONS.map((x) => x.id).join(', ');
+const sql = `-- Banco de preguntas (generado por tools/generate-seed.js desde js/questions.js — no editar a mano).
+-- Ejecutar después de schema.sql. Se puede repetir: reemplaza el banco completo.
+delete from public.questions where id not in (${ids});
 insert into public.questions (id, category, type, question, options, context, explanation, correct_answer) values
 ${rows.join(',\n')}
 on conflict (id) do update set

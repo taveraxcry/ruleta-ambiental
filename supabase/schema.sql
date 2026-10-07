@@ -263,54 +263,65 @@ begin
   update public.rooms set phase = 'WAITING' where code = r.code;
 end $$;
 
+-- Segmentos de la ruleta en orden horario. DEBE coincidir con R.CATEGORIES de js/config.js.
+create or replace function public._wheel_categories()
+returns text[] language sql immutable as $$
+  select array['KYOTO','ROTTERDAM','ESCAZU','BASILEA','CITES','RAMSAR','PARIS',
+               'MONTREAL','GINEBRA','GOTHENBURG','BRUNDTLAND','EPI','INTEGRADORA'];
+$$;
+
+-- Elige categoría y pregunta SOLO entre categorías de la ruleta que aún tienen preguntas sin usar
+-- en la partida. Una categoría sin preguntas cargadas (p. ej. ROTTERDAM, MONTREAL) nunca sale.
+create or replace function public._pick_question(p_used int[], out o_category text, out o_question_id int, out o_reset boolean)
+language plpgsql volatile as $$
+declare v_avail text[];
+begin
+  o_reset := false;
+  select array_agg(distinct q.category) into v_avail from public.questions q
+    where q.category = any (public._wheel_categories()) and q.id <> all (coalesce(p_used, '{}'));
+  if v_avail is null then   -- banco agotado: se empieza de nuevo
+    o_reset := true;
+    select array_agg(distinct q.category) into v_avail from public.questions q
+      where q.category = any (public._wheel_categories());
+  end if;
+  if v_avail is null then raise exception 'No hay preguntas cargadas'; end if;
+  o_category := v_avail[1 + floor(random() * array_length(v_avail, 1))::int];
+  select q.id into o_question_id from public.questions q
+    where q.category = o_category and (o_reset or q.id <> all (coalesce(p_used, '{}')))
+    order by random() limit 1;
+end $$;
+
 -- La categoría y la pregunta se deciden AQUÍ, una sola vez, para todos los dispositivos.
--- El orden de v_cats DEBE coincidir con R.CATEGORIES de js/config.js.
 create or replace function public.spin(p_code text)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   r public.rooms;
-  v_cats constant text[] := array['KYOTO','ROTTERDAM','ESCAZU','BASILEA','CITES','RAMSAR',
-                                  'PARIS','MONTREAL','GINEBRA','GOTHENBURG','BRUNDTLAND','EPI'];
+  v_cats text[] := public._wheel_categories();
   v_n int := array_length(v_cats, 1);
+  v_pick record;
   v_idx int;
   v_seg numeric;
   v_jitter numeric;
   v_landing numeric;
   v_rotation numeric;
-  v_priv public.room_private;
-  v_qid int;
   v_used int[];
 begin
   r := public._host_room(p_code);
   perform public._require_phase(r, 'WAITING');
 
-  v_idx := floor(random() * v_n)::int;
+  select used_question_ids into v_used from public.room_private where room_code = r.code for update;
+  select * into v_pick from public._pick_question(v_used);
+  if v_pick.o_reset then v_used := '{}'; end if;
+
+  v_idx := array_position(v_cats, v_pick.o_category) - 1;
   v_seg := 360.0 / v_n;
-  v_jitter := (random() - 0.5) * v_seg * 0.7;
+  v_jitter := (random() - 0.5) * v_seg * 0.7;   -- aterriza dentro del segmento, no siempre al centro
   v_landing := mod(mod(360 - (v_idx * v_seg + v_seg / 2 + v_jitter), 360) + 360, 360);
   v_rotation := floor(r.wheel_rotation / 360) * 360 + (5 + floor(random() * 3)) * 360 + v_landing;
 
-  select * into v_priv from public.room_private where room_code = r.code for update;
-  v_used := v_priv.used_question_ids;
-
-  select q.id into v_qid from public.questions q
-    where q.category = v_cats[v_idx + 1] and q.id <> all (v_used)
-    order by random() limit 1;
-  if v_qid is null then  -- categoría agotada: se reinician solo sus preguntas
-    v_used := array(select u from unnest(v_used) u
-                    where u not in (select id from public.questions where category = v_cats[v_idx + 1]));
-    select q.id into v_qid from public.questions q
-      where q.category = v_cats[v_idx + 1] and q.id <> all (v_used)
-      order by random() limit 1;
-  end if;
-  if v_qid is null then
-    select q.id into v_qid from public.questions q where q.id <> all (v_used) order by random() limit 1;
-  end if;
-  if v_qid is null then raise exception 'No hay preguntas disponibles'; end if;
-
   update public.room_private
-     set pending_category = v_cats[v_idx + 1], question_id = v_qid,
-         used_question_ids = array_append(v_used, v_qid)
+     set pending_category = v_pick.o_category, question_id = v_pick.o_question_id,
+         used_question_ids = array_append(v_used, v_pick.o_question_id)
    where room_code = r.code;
 
   update public.rooms set
@@ -480,7 +491,7 @@ begin
       and p.proname in ('is_room_member','server_time','create_room','join_room','leave_room','close_room',
                         'start_game','spin','reveal_category','show_question','close_answers',
                         'show_results','show_leaderboard','next_round','submit_answer',
-                        '_calc_score','_host_room','_require_phase')
+                        '_calc_score','_host_room','_require_phase','_wheel_categories','_pick_question')
   loop
     execute format('revoke all on function %s from public, anon, authenticated', f.sig);
     if left(f.proname, 1) <> '_' then

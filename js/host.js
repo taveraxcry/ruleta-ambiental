@@ -33,8 +33,6 @@
     return dup ? 'Ya existe un equipo con ese nombre en la sala.' : null;
   }
 
-  const BOT_NAMES = ['EcoBot Alfa', 'Bot Verde', 'Bot Océano', 'Bot Sol'];
-
   class HostGame {
     constructor(transport, totalRounds) {
       this.transport = transport;
@@ -150,7 +148,7 @@
     addDemoTeams() {
       if (this.state.phase !== P.LOBBY) return;
       const self = this;
-      BOT_NAMES.forEach(function (n, i) { self.addTeam('bot-' + i, n, true); });
+      CFG.DEMO_TEAMS.forEach(function (n, i) { self.addTeam('bot-' + i, n, true); });
       this.publish();
     }
 
@@ -164,16 +162,17 @@
       const s = this.state;
       if (s.phase !== P.WAITING) return;
       const cats = R.CATEGORIES;
-      const index = Math.floor(Math.random() * cats.length);
+      // La categoría y la pregunta se deciden AQUÍ, una sola vez, en el estado autoritativo.
+      const pick = this.pickRound();
+      const index = pick.index;
       const seg = 360 / cats.length;
       const jitter = (Math.random() - 0.5) * seg * 0.7;          // aterriza dentro del segmento, no siempre al centro
       const landing = (360 - (index * seg + seg / 2 + jitter) + 360) % 360;
       const extraTurns = 5 + Math.floor(Math.random() * 3);
       const rotation = Math.floor(s.wheelRotation / 360) * 360 + extraTurns * 360 + landing;
 
-      // La categoría y la pregunta se deciden AQUÍ, una sola vez, en el estado autoritativo.
       s.currentCategory = cats[index].id;
-      s.currentQuestion = this.pickQuestion(cats[index].id);
+      s.currentQuestion = pick.question;
       s.spin = { id: Date.now(), categoryIndex: index, rotation: rotation, durationMs: CFG.SPIN_DURATION_MS };
       s.wheelRotation = rotation;
       this.go(P.SPINNING);
@@ -185,19 +184,30 @@
       }, CFG.SPIN_DURATION_MS + 400);
     }
 
-    pickQuestion(categoryId) {
+    /* Solo se eligen categorías habilitadas que todavía tienen preguntas sin usar en esta partida:
+       la ruleta nunca cae en un tema vacío y no se repiten preguntas. */
+    pickRound() {
       const s = this.state;
-      const pool = R.QUESTIONS.filter(function (q) { return q.category === categoryId; });
-      let fresh = pool.filter(function (q) { return s.usedQuestionIds.indexOf(q.id) === -1; });
-      if (!fresh.length) {
-        // Se agotó la categoría: reiniciar solo sus preguntas.
-        const ids = pool.map(function (q) { return q.id; });
-        s.usedQuestionIds = s.usedQuestionIds.filter(function (id) { return ids.indexOf(id) === -1; });
-        fresh = pool;
+      const cats = R.CATEGORIES;
+      const usable = function (q) {
+        const c = cats.find(function (x) { return x.id === q.category; });
+        return !!c && c.enabled;
+      };
+      let pool = R.QUESTIONS.filter(function (q) { return usable(q) && s.usedQuestionIds.indexOf(q.id) === -1; });
+      if (!pool.length) {   // se agotó el banco: empieza de nuevo
+        s.usedQuestionIds = [];
+        pool = R.QUESTIONS.filter(usable);
       }
-      const q = fresh[Math.floor(Math.random() * fresh.length)];
+      const random = function (arr) { return arr[Math.floor(Math.random() * arr.length)]; };
+      let q = R.DEBUG_FORCE_QUESTION ? pool.find(function (x) { return x.id === R.DEBUG_FORCE_QUESTION; }) : null;  // solo pruebas
+      R.DEBUG_FORCE_QUESTION = null;
+      if (!q) {
+        const catIds = pool.map(function (x) { return x.category; }).filter(function (c, i, a) { return a.indexOf(c) === i; });
+        const catId = random(catIds);
+        q = random(pool.filter(function (x) { return x.category === catId; }));
+      }
       s.usedQuestionIds.push(q.id);
-      return q;
+      return { index: cats.findIndex(function (c) { return c.id === q.category; }), question: q };
     }
 
     showQuestion() {
