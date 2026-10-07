@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ruleta Ambiental</title>
+  <meta name="description" content="Concurso educativo de gestión ambiental y logística reversa.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="bg" class="bg" aria-hidden="true"></div>
+  <div id="toast" class="toast hidden" role="status"></div>
+
+  <!-- INICIO -->
+  <section id="screen-home" class="screen center">
+    <div class="hero">
+      <div class="globe">🌎</div>
+      <h1>RULETA<br><span>AMBIENTAL</span></h1>
+      <p class="lead">Desafía tus conocimientos sobre gestión ambiental y logística reversa.</p>
+      <div class="home-actions">
+        <button id="btn-create" class="btn btn-primary btn-xl">CREAR SALA <small>Anfitrión / docente</small></button>
+        <button id="btn-join" class="btn btn-secondary btn-xl">UNIRSE A UNA SALA <small>Equipos</small></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- UNIRSE -->
+  <section id="screen-join" class="screen center hidden">
+    <form id="join-form" class="card narrow" autocomplete="off" novalidate>
+      <h2 class="section-title">🌱 Unirse a una sala</h2>
+      <label for="join-code">Código de sala</label>
+      <input id="join-code" class="input code-input" type="text" placeholder="ECO-7K4" maxlength="8" autocapitalize="characters" spellcheck="false">
+      <label for="join-name">Nombre de tu equipo</label>
+      <input id="join-name" class="input" type="text" placeholder="Ej: EcoTeam" maxlength="30" spellcheck="false">
+      <p id="join-error" class="form-error hidden" role="alert"></p>
+      <button id="join-submit" type="submit" class="btn btn-primary btn-xl">ENTRAR A LA SALA</button>
+      <button id="btn-join-back" type="button" class="btn btn-ghost">← Volver</button>
+    </form>
+  </section>
+
+  <!-- SALA DEL ANFITRIÓN -->
+  <section id="screen-host-lobby" class="screen center hidden">
+    <div class="card lobby">
+      <button type="button" class="btn btn-ghost back-btn" data-exit="host">← Volver al inicio</button>
+      <div class="brand-line">🌎 RULETA AMBIENTAL</div>
+      <span class="eyebrow">SALA</span>
+      <div id="host-code" class="room-code">ECO-000</div>
+      <p class="muted">Comparte este código con los equipos.</p>
+      <h3 class="sub-title">EQUIPOS CONECTADOS (<span id="host-count">0</span>)</h3>
+      <ul id="host-teams" class="team-list"></ul>
+      <div class="lobby-actions">
+        <button id="btn-start" class="btn btn-primary btn-xl" disabled>INICIAR PARTIDA</button>
+        <button id="btn-demo" class="btn btn-ghost">+ Añadir equipos de prueba</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SALA DE ESPERA DEL EQUIPO -->
+  <section id="screen-team-lobby" class="screen center hidden">
+    <div class="card lobby">
+      <button type="button" class="btn btn-ghost back-btn" data-exit="team">← Salir de la sala</button>
+      <div class="brand-line">🌎 SALA DE ESPERA</div>
+      <span class="eyebrow">CÓDIGO</span>
+      <div id="tl-code" class="room-code small">ECO-000</div>
+      <div class="me-box">
+        <span class="eyebrow">EQUIPO</span>
+        <strong id="tl-team"></strong>
+        <span class="status-ok"><span class="dot on"></span> Conectado</span>
+      </div>
+      <h3 class="sub-title">EQUIPOS EN LA SALA</h3>
+      <ul id="tl-teams" class="team-list"></ul>
+      <p class="waiting">Esperando al anfitrión<span class="dots"></span></p>
+    </div>
+  </section>
+
+  <!-- JUEGO -->
+  <section id="screen-game" class="screen hidden">
+    <header class="game-header">
+      <div class="brand-mini"><button type="button" class="btn btn-ghost back-btn" data-exit="game" aria-label="Salir de la partida">← Salir</button><span class="brand-text">🌎 RULETA AMBIENTAL</span></div>
+      <div class="round-pill">Ronda <b id="g-round">1 / 10</b></div>
+      <div id="g-right" class="g-right"></div>
+    </header>
+
+    <main class="game-main">
+      <div id="stage-wheel" class="stage">
+        <div class="wheel-wrap">
+          <div class="pointer" aria-hidden="true"></div>
+          <div id="wheel-rotor" class="wheel-rotor"><canvas id="wheel-canvas" aria-label="Ruleta de categorías"></canvas></div>
+          <div class="hub" aria-hidden="true">🌎</div>
+        </div>
+        <div id="wheel-status" class="wheel-status" aria-live="polite"></div>
+        <div id="category-reveal" class="category-reveal hidden" aria-live="polite"></div>
+      </div>
+
+      <div id="stage-question" class="stage hidden"></div>
+      <div id="stage-results" class="stage hidden"></div>
+      <div id="stage-leaderboard" class="stage hidden"></div>
+      <div id="stage-gameover" class="stage hidden"></div>
+    </main>
+
+    <footer id="host-actions" class="host-actions hidden"></footer>
+  </section>
+
+  <script src="js/config.js"></script>
+  <script src="js/scoring.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/transport.js"></script>
+  <script src="js/host.js"></script>
+  <script src="js/client.js"></script>
+  <script src="js/wheel.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

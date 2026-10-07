@@ -1,0 +1,308 @@
+/* Motor del anfitrión: dueño del estado autoritativo.
+   Los equipos solo envían intenciones (JOIN, ANSWER); el anfitrión valida, puntúa y publica el estado.
+   Al migrar a Supabase, esta lógica pasaría a una función de servidor / RPC con la misma forma. */
+(function (R) {
+  'use strict';
+
+  const P = R.PHASES;
+  const CFG = R.CONFIG;
+  const CODE_CHARS = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'; // sin 0/O/1/I para dictar el código en voz alta
+
+  function generateRoomCode() {
+    let s = '';
+    for (let i = 0; i < 3; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    return 'ECO-' + s;
+  }
+
+  function normalizeName(name) {
+    return String(name || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function nameKey(name) {
+    return normalizeName(name).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
+
+  /* Devuelve un mensaje de error o null si el nombre es válido. */
+  function validateTeamName(name, existingTeams, ownId) {
+    const n = normalizeName(name);
+    if (!n) return 'Escribe un nombre para tu equipo.';
+    if (n.length < CFG.MIN_TEAM_NAME) return 'El nombre es demasiado corto.';
+    if (n.length > CFG.MAX_TEAM_NAME) return 'El nombre es demasiado largo (máximo ' + CFG.MAX_TEAM_NAME + ' caracteres).';
+    const key = nameKey(n);
+    const dup = existingTeams.some(function (t) { return t.id !== ownId && nameKey(t.name) === key; });
+    return dup ? 'Ya existe un equipo con ese nombre en la sala.' : null;
+  }
+
+  const BOT_NAMES = ['EcoBot Alfa', 'Bot Verde', 'Bot Océano', 'Bot Sol'];
+
+  class HostGame {
+    constructor(transport, totalRounds) {
+      this.transport = transport;
+      this.state = R.createInitialState(generateRoomCode(), totalRounds || CFG.TOTAL_ROUNDS);
+      this.listeners = [];
+      this.timers = [];
+      transport.on(this.handleMessage.bind(this));
+      setInterval(this.checkPresence.bind(this), 3000);
+    }
+
+    subscribe(fn) { this.listeners.push(fn); }
+
+    publish() {
+      const pub = R.toPublicState(this.state, Date.now());
+      this.listeners.forEach(function (fn) { fn(pub); });
+      this.transport.send({ type: 'STATE', room: this.state.roomCode, state: pub });
+    }
+
+    sendTo(teamId, msg) {
+      msg.room = this.state.roomCode;
+      msg.to = teamId;
+      this.transport.send(msg);
+    }
+
+    later(fn, ms) {
+      const id = setTimeout(fn, ms);
+      this.timers.push(id);
+      return id;
+    }
+
+    clearTimers() {
+      this.timers.forEach(clearTimeout);
+      this.timers = [];
+    }
+
+    go(phase) {
+      if (!R.canTransition(this.state.phase, phase)) return false;
+      this.state.phase = phase;
+      return true;
+    }
+
+    /* ---------- Mensajes de los equipos ---------- */
+    handleMessage(msg) {
+      if (!msg || msg.room !== this.state.roomCode) return;
+      if (msg.type === 'JOIN') {
+        const res = this.addTeam(msg.teamId, msg.name, false);
+        this.sendTo(msg.teamId, {
+          type: 'JOIN_RESULT', ok: res.ok, error: res.error || null,
+          myAnswer: res.ok ? this.answerOf(msg.teamId) : null
+        });
+        if (res.ok) this.publish();
+      } else if (msg.type === 'LEAVE') {
+        const t = this.findTeam(msg.teamId);
+        if (!t) return;
+        if (this.state.phase === P.LOBBY) this.state.teams = this.state.teams.filter(function (x) { return x !== t; });
+        else t.connected = false;
+        this.publish();
+      } else if (msg.type === 'HEARTBEAT') {
+        const t = this.findTeam(msg.teamId);
+        if (t) {
+          t.lastSeen = Date.now();
+          if (!t.connected) { t.connected = true; this.publish(); }
+        }
+      } else if (msg.type === 'ANSWER') {
+        const res = this.submitAnswer(msg.teamId, msg.index);
+        if (res.ok) this.sendTo(msg.teamId, { type: 'ANSWER_ACK', round: this.state.currentRound, index: msg.index });
+        else this.sendTo(msg.teamId, { type: 'ANSWER_REJECT', error: res.error });
+      }
+    }
+
+    findTeam(id) {
+      return this.state.teams.find(function (t) { return t.id === id; });
+    }
+
+    answerOf(teamId) {
+      const a = this.state.answers[teamId];
+      return a ? { round: this.state.currentRound, index: a.index } : null;
+    }
+
+    checkPresence() {
+      const now = Date.now();
+      let changed = false;
+      this.state.teams.forEach(function (t) {
+        if (t.isBot) return;
+        const online = now - t.lastSeen < CFG.OFFLINE_AFTER_MS;
+        if (online !== t.connected) { t.connected = online; changed = true; }
+      });
+      if (changed) this.publish();
+    }
+
+    /* ---------- Equipos ---------- */
+    addTeam(id, name, isBot) {
+      const s = this.state;
+      const existing = this.findTeam(id);
+      if (existing) { // reconexión del mismo dispositivo
+        existing.lastSeen = Date.now();
+        existing.connected = true;
+        return { ok: true, team: existing };
+      }
+      if (s.phase !== P.LOBBY) return { ok: false, error: 'La partida ya comenzó. No se pueden unir más equipos.' };
+      const err = validateTeamName(name, s.teams, id);
+      if (err) return { ok: false, error: err };
+      const team = {
+        id: id, name: normalizeName(name), score: 0, roundPoints: 0,
+        isBot: !!isBot, lastSeen: Date.now(), connected: true
+      };
+      s.teams.push(team);
+      return { ok: true, team: team };
+    }
+
+    addDemoTeams() {
+      if (this.state.phase !== P.LOBBY) return;
+      const self = this;
+      BOT_NAMES.forEach(function (n, i) { self.addTeam('bot-' + i, n, true); });
+      this.publish();
+    }
+
+    /* ---------- Flujo de la partida (acciones del anfitrión) ---------- */
+    startGame() {
+      if (this.state.teams.length < 1 || !this.go(P.WAITING)) return;
+      this.publish();
+    }
+
+    spin() {
+      const s = this.state;
+      if (s.phase !== P.WAITING) return;
+      const cats = R.CATEGORIES;
+      const index = Math.floor(Math.random() * cats.length);
+      const seg = 360 / cats.length;
+      const jitter = (Math.random() - 0.5) * seg * 0.7;          // aterriza dentro del segmento, no siempre al centro
+      const landing = (360 - (index * seg + seg / 2 + jitter) + 360) % 360;
+      const extraTurns = 5 + Math.floor(Math.random() * 3);
+      const rotation = Math.floor(s.wheelRotation / 360) * 360 + extraTurns * 360 + landing;
+
+      // La categoría y la pregunta se deciden AQUÍ, una sola vez, en el estado autoritativo.
+      s.currentCategory = cats[index].id;
+      s.currentQuestion = this.pickQuestion(cats[index].id);
+      s.spin = { id: Date.now(), categoryIndex: index, rotation: rotation, durationMs: CFG.SPIN_DURATION_MS };
+      s.wheelRotation = rotation;
+      this.go(P.SPINNING);
+      this.publish();
+
+      const self = this;
+      this.later(function () {
+        if (self.go(P.CATEGORY_SELECTED)) self.publish();
+      }, CFG.SPIN_DURATION_MS + 400);
+    }
+
+    pickQuestion(categoryId) {
+      const s = this.state;
+      const pool = R.QUESTIONS.filter(function (q) { return q.category === categoryId; });
+      let fresh = pool.filter(function (q) { return s.usedQuestionIds.indexOf(q.id) === -1; });
+      if (!fresh.length) {
+        // Se agotó la categoría: reiniciar solo sus preguntas.
+        const ids = pool.map(function (q) { return q.id; });
+        s.usedQuestionIds = s.usedQuestionIds.filter(function (id) { return ids.indexOf(id) === -1; });
+        fresh = pool;
+      }
+      const q = fresh[Math.floor(Math.random() * fresh.length)];
+      s.usedQuestionIds.push(q.id);
+      return q;
+    }
+
+    showQuestion() {
+      const s = this.state;
+      if (s.phase !== P.CATEGORY_SELECTED || !this.go(P.QUESTION_ACTIVE)) return;
+      s.questionStartedAt = Date.now();
+      s.questionDeadline = s.questionStartedAt + CFG.QUESTION_TIME * 1000;
+      s.answers = {};
+      s.results = null;
+      s.teams.forEach(function (t) { t.roundPoints = 0; });
+      this.publish();
+      this.later(this.closeAnswers.bind(this), CFG.QUESTION_TIME * 1000);
+      this.scheduleBots();
+    }
+
+    closeAnswers() {
+      if (this.state.phase !== P.QUESTION_ACTIVE || !this.go(P.ANSWER_LOCKED)) return;
+      this.clearTimers();
+      this.publish();
+      this.later(this.showResults.bind(this), CFG.RESULTS_DELAY_MS);
+    }
+
+    /* ---------- Respuestas ---------- */
+    submitAnswer(teamId, index) {
+      const s = this.state;
+      const team = this.findTeam(teamId);
+      if (!team) return { ok: false, error: 'Equipo no registrado.' };
+      if (s.phase !== P.QUESTION_ACTIVE) return { ok: false, error: 'Las respuestas están cerradas.' };
+      const now = Date.now(); // <-- reloj del anfitrión/servidor, no el del dispositivo del equipo
+      if (now > s.questionDeadline) return { ok: false, error: 'Se acabó el tiempo.' };
+      if (s.answers[teamId]) return { ok: false, error: 'Tu equipo ya respondió.' };
+      const n = s.currentQuestion.options.length;
+      if (!Number.isInteger(index) || index < 0 || index >= n) return { ok: false, error: 'Opción inválida.' };
+      s.answers[teamId] = { index: index, receivedAt: now, responseTime: (now - s.questionStartedAt) / 1000 };
+      this.publish();
+      return { ok: true };
+    }
+
+    scheduleBots() {
+      const self = this;
+      const q = this.state.currentQuestion;
+      this.state.teams.filter(function (t) { return t.isBot; }).forEach(function (bot) {
+        if (Math.random() < 0.1) return; // a veces no responde
+        const correct = Math.random() < 0.7;
+        let idx = q.correctAnswer;
+        if (!correct) {
+          const wrong = q.options.map(function (_, i) { return i; }).filter(function (i) { return i !== q.correctAnswer; });
+          idx = wrong[Math.floor(Math.random() * wrong.length)];
+        }
+        self.later(function () { self.submitAnswer(bot.id, idx); }, 1200 + Math.random() * 15000);
+      });
+    }
+
+    /* ---------- Resultados ---------- */
+    showResults() {
+      const s = this.state;
+      if (s.phase !== P.ANSWER_LOCKED || !this.go(P.RESULTS)) return;
+      const q = s.currentQuestion;
+      const rows = s.teams.map(function (t) {
+        const a = s.answers[t.id];
+        const isCorrect = !!a && a.index === q.correctAnswer;
+        const points = R.calculateScore(a ? a.responseTime : null, isCorrect);
+        t.roundPoints = points;
+        t.score += points;
+        return {
+          teamId: t.id, name: t.name,
+          answerIndex: a ? a.index : null,
+          responseTime: a ? a.responseTime : null,
+          correct: isCorrect, points: points
+        };
+      });
+      rows.sort(function (a, b) { return b.points - a.points; }); // los empates conservan el orden de registro
+      s.results = {
+        round: s.currentRound,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation || null,
+        rows: rows
+      };
+      this.publish();
+    }
+
+    showLeaderboard() {
+      if (this.go(P.LEADERBOARD)) this.publish();
+    }
+
+    nextRound() {
+      const s = this.state;
+      if (s.phase !== P.LEADERBOARD) return;
+      if (s.currentRound >= s.totalRounds) {
+        this.go(P.GAME_OVER);
+      } else {
+        this.go(P.NEXT_ROUND);
+        s.currentRound += 1;
+        s.currentCategory = null;
+        s.currentQuestion = null;
+        s.spin = null;
+        s.answers = {};
+        s.results = null;
+        s.questionStartedAt = s.questionDeadline = null;
+        s.teams.forEach(function (t) { t.roundPoints = 0; });
+        this.go(P.WAITING);
+      }
+      this.publish();
+    }
+  }
+
+  R.HostGame = HostGame;
+  R.validateTeamName = validateTeamName;
+  R.normalizeName = normalizeName;
+})(window.Ruleta = window.Ruleta || {});
