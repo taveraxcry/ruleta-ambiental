@@ -68,29 +68,29 @@ function html(wheelSrc) {
   body { margin: 0; font-family: Montserrat, sans-serif; color: #1d2b29; font-size: 10.6pt; line-height: 1.55; background: #fff; }
   h1, h2, h3 { margin: 0; line-height: 1.15; }
   .cover { height: 257mm; display: flex; flex-direction: column; justify-content: center; page-break-after: always; position: relative; }
-  .cover .band { position: absolute; left: 0; right: 0; top: 0; height: 8px; border-radius: 6px; background: linear-gradient(90deg, #5ef0bd, #2fd4c0, #47c8f5); }
-  .kicker { font-size: 9pt; letter-spacing: .28em; font-weight: 700; color: #129e88; text-transform: uppercase; }
+  .cover .band { position: absolute; left: 0; right: 0; top: 0; height: 8px; border-radius: 6px; background: linear-gradient(90deg, #7ed957, #4caf50, #a5d65a); }
+  .kicker { font-size: 9pt; letter-spacing: .28em; font-weight: 700; color: #3f8f3a; text-transform: uppercase; }
   .cover h1 { font-size: 46pt; font-weight: 900; letter-spacing: -.01em; margin: 10px 0 6px; }
-  .cover h1 span { color: #12a58c; }
+  .cover h1 span { color: #3f9f3a; }
   .cover .sub { font-size: 15pt; font-weight: 500; color: #46605c; }
   .cover .meta { margin-top: 34px; display: flex; gap: 12px; flex-wrap: wrap; }
-  .pill { border: 1px solid #cfe7e1; background: #f2faf8; border-radius: 999px; padding: 7px 14px; font-size: 9pt; font-weight: 600; color: #2b4945; }
+  .pill { border: 1px solid #d6e9cc; background: #f3f9ee; border-radius: 999px; padding: 7px 14px; font-size: 9pt; font-weight: 600; color: #2b4945; }
   .cover .wheel { margin: 34px auto 0; width: 108mm; display: block; filter: drop-shadow(0 10px 18px rgba(0,0,0,.18)); }
   .cover .foot { position: absolute; bottom: 0; font-size: 8.5pt; color: #7a908c; }
   h2.section { font-size: 19pt; font-weight: 800; margin: 0 0 4px; }
   .lead { color: #4c6662; margin: 0 0 18px; }
-  .block { break-inside: avoid; margin: 0 0 12px; padding: 12px 16px 10px; border-radius: 12px; border: 1px solid #e3efec; background: #fbfdfc; }
+  .block { break-inside: avoid; margin: 0 0 12px; padding: 12px 16px 10px; border-radius: 12px; border: 1px solid #e4eedd; background: #fbfdf9; }
   .block h3 { font-size: 12pt; font-weight: 800; display: flex; align-items: baseline; gap: 10px; }
-  .block h3 .n { color: #12a58c; }
-  .block h3 .t { margin-left: auto; font-size: 8.5pt; font-weight: 700; color: #129e88; letter-spacing: .1em; }
-  .say { margin: 6px 0 6px; padding: 8px 13px; border-left: 3px solid #2fd4c0; background: #eefaf7; border-radius: 0 8px 8px 0; font-style: italic; color: #24403c; }
+  .block h3 .n { color: #3f9f3a; }
+  .block h3 .t { margin-left: auto; font-size: 8.5pt; font-weight: 700; color: #3f8f3a; letter-spacing: .1em; }
+  .say { margin: 6px 0 6px; padding: 8px 13px; border-left: 3px solid #4caf50; background: #f1f8ea; border-radius: 0 8px 8px 0; font-style: italic; color: #24403c; }
   .block ul { margin: 6px 0 0; padding-left: 18px; }
   .block li { margin: 2px 0; }
   .tip { font-size: 9pt; color: #5d7672; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   table.score { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-  table.score td { padding: 2px 8px; border-bottom: 1px solid #e3efec; }
-  table.score td:last-child { text-align: right; font-weight: 800; color: #0f8f7a; }
+  table.score td { padding: 2px 8px; border-bottom: 1px solid #e4eedd; }
+  table.score td:last-child { text-align: right; font-weight: 800; color: #2f7d32; }
   table.score tr.zero td:last-child { color: #b5483a; }
   .legend { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
   .legend li { display: grid; grid-template-columns: 12px 1fr auto; column-gap: 8px; align-items: center; font-size: 9pt; }
@@ -101,7 +101,7 @@ function html(wheelSrc) {
   .page-break { page-break-before: always; }
   .wheel-row { display: grid; grid-template-columns: 64mm 1fr; gap: 18px; align-items: center; margin-bottom: 14px; }
   .wheel-row img { width: 64mm; filter: drop-shadow(0 6px 12px rgba(0,0,0,.15)); }
-  .q { break-inside: avoid; margin: 0 0 10px; padding: 11px 14px; border: 1px solid #e3efec; border-radius: 12px; }
+  .q { break-inside: avoid; margin: 0 0 10px; padding: 11px 14px; border: 1px solid #e4eedd; border-radius: 12px; }
   .q.bonus { background: #fff8e6; border-color: #f1d58a; }
   .q-head { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
   .seg { font-size: 8.5pt; font-weight: 800; color: #fff; background: #1d2b29; border-radius: 6px; padding: 2px 7px; }
@@ -110,12 +110,12 @@ function html(wheelSrc) {
   .q-text { margin: 2px 0 6px; font-weight: 600; }
   .opts { list-style: none; padding: 0; margin: 0; display: grid; gap: 3px; font-size: 9.6pt; }
   .opts li { display: flex; gap: 8px; align-items: baseline; padding: 3px 8px; border-radius: 7px; }
-  .opts li.ok { background: #e3f8ef; font-weight: 700; color: #0d6b52; }
+  .opts li.ok { background: #e6f6dc; font-weight: 700; color: #2e6b1f; }
   .opts .l { font-weight: 800; width: 14px; flex: 0 0 auto; color: #5d7672; }
-  .opts li.ok .l { color: #0d6b52; }
+  .opts li.ok .l { color: #2e6b1f; }
   .opts .mark { margin-left: auto; font-size: 8pt; font-weight: 800; white-space: nowrap; }
   .key { columns: 2; font-size: 9pt; margin: 0; padding: 0; list-style: none; }
-  .key li { break-inside: avoid; padding: 2px 0; border-bottom: 1px dotted #dbe8e5; }
+  .key li { break-inside: avoid; padding: 2px 0; border-bottom: 1px dotted #dfe9d8; }
   .key b { display: inline-block; width: 26px; }
 </style></head><body>
 
